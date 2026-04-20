@@ -1,0 +1,42 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+
+# venv & env
+.venv/
+venv/
+env/
+.python-version
+
+# test / tool caches
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+.tox/
+
+# macOS resource forks (KINGSTON volume produces these)
+._*
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# generated / ad-hoc
+*.annotated.pdf
+sidecar.sqlite
+.pdfanno/
+
+# fixtures 是 session 生成的，不入库（_build.py 本身是源码，会被提交）
+tests/fixtures/*.pdf
+tests/fixtures/*.sqlite
+
+# CLAUDE.md / AGENTS.md / plan.md / .claude/skills/ 是仓库内 AI 协作约定，照常提交。

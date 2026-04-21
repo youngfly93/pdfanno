@@ -8,13 +8,21 @@ Week 2 H1 (candidate pool + 1:1 + quad reconstruction):
 
 Week 2 H2 (context_similarity + changed 状态):
 - `context_similarity` 用 SequenceMatcher 比对旧 anchor 的 ±300 字 context 与
-  新位置的 ±300 字 context。归一化后参与打分。
-- 打分公式对齐 PRD §8.3 的 text(0.40) / context(0.30) / proximity(0.10)。
-  layout(0.15) / length(0.05) 尚未实现，由归一化 `/ ACTIVE_SUM` 补偿。
-- 新状态 `changed`：fuzzy text (≥0.60 且 <1.0) 但 context 强 (≥0.70) →
-  原位置文本被编辑，review_required=True。
+  新位置的 ±300 字 context。
+- 新状态 `changed`：高 text (≥0.90) 或 fuzzy text + 强 context (≥0.70)。
 
-Week 2+ 继续补齐：layout_score / ambiguous / unsupported。
+Week 2 H3 (layout_score + length_similarity):
+- PRD §8.3 完整五项打分：text(0.40) / context(0.30) / layout(0.15) /
+  proximity(0.10) / length(0.05)。`_ACTIVE_SUM` 现在是 1.0。
+- `layout_score` 为 exact 候选计算：y_ratio 相似度（占 0.70）+ x_ratio 相似度
+  （占 0.30）。同页多实例下，与旧 anchor y-位置最接近的候选胜出 —— 这是解决
+  arXiv spike 里 "第 k 次 BLEU 应对应第 k 次 BLEU" 的关键信号。
+- 若 anchor 或页面缺少尺寸信息（老 sidecar），layout 退化到 0.5 neutral，不偏不倚。
+- fuzzy 候选无 quad，同样取 0.5 neutral。
+- `length_similarity = 1 - abs(len_old - len_new) / max(len_old, len_new)`。
+  exact 下恒为 1.0；fuzzy 下给弱信号加成。
+
+Week 3+ 继续补齐：ambiguous / unsupported / reading-order 精修。
 """
 
 from __future__ import annotations
@@ -52,14 +60,23 @@ HIGH_TEXT_CHANGED_MIN = 0.90
 # fuzzy 通过阈值后 text_sim 仍在 [CHANGED_TEXT_MIN, 1.0) 区间 —— 即 0.85 以上。
 FUZZY_THRESHOLD = 0.85
 
-# 打分权重 —— 对齐 PRD §8.3。Week 2 H2 实装 text/context/proximity；
-# layout(0.15) / length(0.05) 尚未实现，保持 0 并用 ACTIVE_SUM 归一化。
+# 打分权重 —— 对齐 PRD §8.3。Week 2 H3 起五项齐全，_ACTIVE_SUM = 1.0。
 W_TEXT = 0.40
 W_CONTEXT = 0.30
+W_LAYOUT = 0.15
 W_PROXIMITY = 0.10
-W_LAYOUT = 0.0  # Week 2 H3 / Week 3
-W_LENGTH = 0.0  # Week 2 H3 / Week 3
-_ACTIVE_SUM = W_TEXT + W_CONTEXT + W_PROXIMITY  # 0.80
+W_LENGTH = 0.05
+_ACTIVE_SUM = W_TEXT + W_CONTEXT + W_LAYOUT + W_PROXIMITY + W_LENGTH  # 1.00
+
+# layout_score 内部权重：同页 y/x 子分数 + 文档级 reading-order rank 子分数。
+# 当文本跨页重复出现（例如 "BLEU" × 11），rank 子分数解决跨页 k-th 映射；
+# y/x 子分数解决同页多实例定位。W_LAYOUT_RANK 比 W_LAYOUT_Y 重，因为 rank 在
+# 有重复 token 时比 y 更强地定义 "第几次"。
+W_LAYOUT_RANK = 0.60
+W_LAYOUT_Y = 0.30
+W_LAYOUT_X = 0.10
+# 缺尺寸或 rank 信息时 layout 子分数的 neutral 值。
+NEUTRAL_LAYOUT = 0.5
 
 
 @dataclass(frozen=True)
@@ -90,7 +107,9 @@ class _Candidate:
     matched_text: str = ""
     text_similarity: float = 0.0
     context_similarity: float = 0.0
+    layout_score: float = NEUTRAL_LAYOUT
     page_proximity: float = 0.0
+    length_similarity: float = 1.0
     window_start: int = -1
 
     @property
@@ -98,7 +117,9 @@ class _Candidate:
         raw = (
             W_TEXT * self.text_similarity
             + W_CONTEXT * self.context_similarity
+            + W_LAYOUT * self.layout_score
             + W_PROXIMITY * self.page_proximity
+            + W_LENGTH * self.length_similarity
         )
         return raw / _ACTIVE_SUM if _ACTIVE_SUM else 0.0
 
@@ -117,9 +138,18 @@ def diff_against(
 
     pages = [_PageView.from_page(new_doc[i]) for i in range(new_doc.page_count)]
 
+    # 预计算 v2 文档级 reading-order occurrence 列表，
+    # 为 candidate 的 rank 子分数（跨页 k-th 映射）提供全局索引。
+    queries = {normalize_text(a.selected_text) for a in old_anchors if a.selected_text}
+    v2_occurrences = _build_doc_occurrences(new_doc, queries)
+
     # Phase 1: 每条 anchor 生成候选列表。
     anchor_candidates: list[tuple[Anchor, list[_Candidate]]] = [
-        (anchor, _candidates_for(anchor, pages, page_window=page_window)) for anchor in old_anchors
+        (
+            anchor,
+            _candidates_for(anchor, pages, page_window=page_window, v2_occurrences=v2_occurrences),
+        )
+        for anchor in old_anchors
     ]
 
     # Phase 2: 全局贪心 1:1 分配（score desc）。
@@ -147,19 +177,29 @@ def diff_against(
 
 
 def _candidates_for(
-    anchor: Anchor, pages: list[_PageView], *, page_window: int
+    anchor: Anchor,
+    pages: list[_PageView],
+    *,
+    page_window: int,
+    v2_occurrences: dict[str, list[tuple[int, float, float]]] | None = None,
 ) -> list[_Candidate]:
     """枚举 anchor 在新 PDF 上的全部候选。
 
     策略：优先用 PyMuPDF `search_for` 拿到精确命中 + quads；
     若全文无 exact 命中，退而用 difflib 对每页整串 fuzzy 匹配（无 quads）。
+    `v2_occurrences` 提供 doc-level reading-order rank，用于 layout 子分数。
     """
 
     norm_sel = normalize_text(anchor.selected_text)
     if not norm_sel:
         return []
 
-    candidates = list(_exact_candidates(anchor, pages, norm_sel, page_window=page_window))
+    v2_occs_for_query = (v2_occurrences or {}).get(norm_sel, [])
+    candidates = list(
+        _exact_candidates(
+            anchor, pages, norm_sel, page_window=page_window, v2_occurrences=v2_occs_for_query
+        )
+    )
     if candidates:
         return candidates
     return list(_fuzzy_candidates(anchor, pages, norm_sel, page_window=page_window))
@@ -171,10 +211,17 @@ def _exact_candidates(
     norm_sel: str,
     *,
     page_window: int,
+    v2_occurrences: list[tuple[int, float, float]] | None = None,
 ):
     """每个 page.search_for 返回的 quad 与 normalized text 中 `norm_sel` 的出现按顺序配对，
-    从而得到每个候选位置的 new context。单栏论文下顺序一致；多栏可能错位 —— Week 3 再处理。"""
+    从而得到每个候选位置的 new context。单栏论文下顺序一致；多栏可能错位 —— Week 3 再处理。
 
+    `v2_occurrences` 是 normalized query 在 v2 整个文档里按 reading-order 排好的
+    (page, cy, cx) 列表，供 layout rank 子分数使用。
+    """
+
+    v2_occs = v2_occurrences or []
+    v2_total = len(v2_occs)
     for pv in pages:
         quads = list(pv.page.search_for(norm_sel, quads=True) or [])
         if not quads:
@@ -184,13 +231,24 @@ def _exact_candidates(
             text_idx = text_positions[q_idx] if q_idx < len(text_positions) else -1
             new_before, new_after = _slice_context(pv.normalized, text_idx, len(norm_sel))
             ctx_sim = _context_similarity(anchor, new_before, new_after)
+            quad_floats = _quad_to_floats(q)
+            v2_rank = _match_v2_rank(v2_occs, pv.index, quad_floats)
+            layout = _layout_score(
+                anchor,
+                quad_floats,
+                pv.page.rect,
+                v2_rank=v2_rank,
+                v2_total=v2_total,
+            )
             yield _Candidate(
                 page_index=pv.index,
-                quads=[_quad_to_floats(q)],
+                quads=[quad_floats],
                 matched_text=norm_sel,
                 text_similarity=1.0,
                 context_similarity=ctx_sim,
+                layout_score=layout,
                 page_proximity=_proximity(pv.index - anchor.page_index, page_window),
+                length_similarity=1.0,  # exact 命中，长度恒等于 needle
             )
 
 
@@ -234,13 +292,17 @@ def _fuzzy_candidates(
             continue
         new_before, new_after = _slice_context(pv.normalized, win_start, len(window))
         ctx_sim = _context_similarity(anchor, new_before, new_after)
+        # fuzzy 没 quad，layout 退化到 neutral；长度相似度拿 needle vs window 的长度比。
+        length_sim = _length_similarity(len(norm_sel), len(window))
         yield _Candidate(
             page_index=pv.index,
             quads=[],
             matched_text=window,
             text_similarity=sim,
             context_similarity=ctx_sim,
+            layout_score=NEUTRAL_LAYOUT,
             page_proximity=_proximity(pv.index - anchor.page_index, page_window),
+            length_similarity=length_sim,
             window_start=win_start,
         )
 
@@ -269,6 +331,106 @@ def _slice_context(text: str, hit_idx: int, hit_len: int) -> tuple[str, str]:
     end = hit_idx + hit_len
     after = text[end : end + CONTEXT_CHARS]
     return before, after
+
+
+def _layout_score(
+    anchor: Anchor,
+    new_quad: list[float],
+    new_rect,
+    *,
+    v2_rank: int | None = None,
+    v2_total: int = 0,
+) -> float:
+    """三个子分数加权和：reading-order rank + y-ratio + x-ratio。
+
+    rank: 0.60 权重。`k-th` v1 occurrence 对应 `k-th` v2 occurrence 的强信号。
+    y: 0.30 权重。同页多实例时按 y 位置锁定。
+    x: 0.10 权重。双栏版式下的 column 提示；单栏几乎没信号。
+
+    任一子分数缺信息 → 退化到 NEUTRAL_LAYOUT，其他子分数照常累加。
+    """
+
+    # rank 子分数
+    if (
+        v2_rank is not None
+        and v2_total > 0
+        and anchor.occurrence_rank is not None
+        and anchor.total_occurrences is not None
+        and anchor.total_occurrences > 0
+    ):
+        v1_norm = anchor.occurrence_rank / max(anchor.total_occurrences, 1)
+        v2_norm = v2_rank / max(v2_total, 1)
+        rank_sim = max(0.0, 1.0 - abs(v1_norm - v2_norm))
+    else:
+        rank_sim = NEUTRAL_LAYOUT
+
+    # y / x 子分数
+    if (
+        not anchor.quads
+        or anchor.page_height is None
+        or anchor.page_height <= 0
+        or anchor.page_width is None
+        or anchor.page_width <= 0
+        or not new_quad
+        or not new_rect
+        or new_rect.height <= 0
+        or new_rect.width <= 0
+    ):
+        y_sim = NEUTRAL_LAYOUT
+        x_sim = NEUTRAL_LAYOUT
+    else:
+        old_cx, old_cy = _quad_center(anchor.quads[0])
+        new_cx, new_cy = _quad_center(new_quad)
+        y_sim = max(0.0, 1.0 - abs(old_cy / anchor.page_height - new_cy / new_rect.height))
+        x_sim = max(0.0, 1.0 - abs(old_cx / anchor.page_width - new_cx / new_rect.width))
+
+    return W_LAYOUT_RANK * rank_sim + W_LAYOUT_Y * y_sim + W_LAYOUT_X * x_sim
+
+
+def _build_doc_occurrences(
+    doc: pymupdf.Document, queries: set[str]
+) -> dict[str, list[tuple[int, float, float]]]:
+    """对每个 query 返回 (page, cy, cx) 列表，按 reading order (page, cy, cx) 排好。"""
+
+    out: dict[str, list[tuple[int, float, float]]] = {q: [] for q in queries}
+    for p_idx in range(doc.page_count):
+        page = doc[p_idx]
+        for q in queries:
+            for quad in page.search_for(q, quads=True) or []:
+                cx = (quad.ul.x + quad.lr.x) / 2
+                cy = (quad.ul.y + quad.lr.y) / 2
+                out[q].append((p_idx, cy, cx))
+    for q in out:
+        out[q].sort(key=lambda t: (t[0], t[1], t[2]))
+    return out
+
+
+def _match_v2_rank(
+    occs: list[tuple[int, float, float]], page_index: int, quad_floats: list[float]
+) -> int | None:
+    """给定 v2 某 page 某 quad，找它在 doc-level occurrence 列表里的 rank。"""
+
+    if not occs or not quad_floats:
+        return None
+    cx, cy = _quad_center(quad_floats)
+    best_idx, best_d = None, float("inf")
+    for idx, (p, ocy, ocx) in enumerate(occs):
+        if p != page_index:
+            continue
+        d = (ocx - cx) ** 2 + (ocy - cy) ** 2
+        if d < best_d:
+            best_d = d
+            best_idx = idx
+    return best_idx
+
+
+def _length_similarity(len_a: int, len_b: int) -> float:
+    if len_a <= 0 and len_b <= 0:
+        return 1.0
+    denom = max(len_a, len_b)
+    if denom == 0:
+        return 1.0
+    return max(0.0, 1.0 - abs(len_a - len_b) / denom)
 
 
 def _context_similarity(anchor: Anchor, new_before: str, new_after: str) -> float:
@@ -351,6 +513,8 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
     reason = MatchReason(
         selected_text_similarity=round(cand.text_similarity, 3),
         context_similarity=round(cand.context_similarity, 3),
+        layout_score=round(cand.layout_score, 3),
+        length_similarity=round(cand.length_similarity, 3),
         page_delta=page_delta,
         candidate_rank=1,
     )

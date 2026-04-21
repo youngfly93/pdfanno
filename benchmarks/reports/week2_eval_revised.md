@@ -1,6 +1,6 @@
 # Evaluation report
 
-- diff: `/tmp/pdfanno_revised/diff.json`
+- diff: `/tmp/pdfanno_revised/diff_h3b.json`
 - ground truth: `/tmp/pdfanno_revised/gt_hard.json`
 - total annotations: gt=26, diff=26, paired=26
 - **overall accuracy (status match)**: 88.5%
@@ -32,6 +32,6 @@
 
 | id | text | pred_status | gt_status | pred_p | gt_p | conf | ctx_sim | gt_reason |
 |---|---|---|---|---:|---:|---:|---:|---|
-| anc_4c9b6805 | 'RNA sequencing libraries were prepared u' | relocated | preserved | 2 | 2 | 81.8% | 51.6% | hardcoded fixture label: preserved |
+| anc_08384e08 | 'Statistical significance was assessed us' | relocated | preserved | 1 | 1 | 83.3% | 44.8% | hardcoded fixture label: preserved |
+| anc_4c9b6805 | 'RNA sequencing libraries were prepared u' | relocated | preserved | 2 | 2 | 85.1% | 51.6% | hardcoded fixture label: preserved |
 | anc_163dda1e | 'Scripts used for differential expression' | preserved | relocated | 3 | 3 | 100.0% | 61.3% | hardcoded fixture label: relocated |
-| anc_08384e08 | 'Statistical significance was assessed us' | relocated | preserved | 1 | 1 | 79.3% | 44.8% | hardcoded fixture label: preserved |

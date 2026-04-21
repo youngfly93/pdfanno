@@ -25,6 +25,7 @@ def extract_anchors(doc: pymupdf.Document, doc_id: str) -> list[Anchor]:
     for page_idx in range(doc.page_count):
         page = doc[page_idx]
         page_text = page.get_text("text") or ""
+        page_rect = page.rect
         for annot in page.annots() or []:
             kind = _annot_kind(annot)
             quads = _annot_quads(annot)
@@ -48,9 +49,59 @@ def extract_anchors(doc: pymupdf.Document, doc_id: str) -> list[Anchor]:
                     ),
                     color=color,
                     note=annot.info.get("content", "") or "",
+                    page_width=float(page_rect.width),
+                    page_height=float(page_rect.height),
                 )
             )
+    _assign_occurrence_ranks(doc, out)
     return out
+
+
+def _assign_occurrence_ranks(doc: pymupdf.Document, anchors: list[Anchor]) -> None:
+    """对每个独特 `selected_text`，按文档阅读顺序 (page, y, x) 给每次出现排 rank，
+    再把 anchor 的 quad 中心映射到最近的出现位置取 occurrence_rank。
+
+    结果 in-place 写入 anchor.occurrence_rank / total_occurrences。
+    """
+
+    queries = {normalize_text(a.selected_text) for a in anchors if a.selected_text}
+    # 每个 query 的 reading-order 位置列表
+    occ_by_query: dict[str, list[tuple[int, float, float]]] = {q: [] for q in queries}
+    for p_idx in range(doc.page_count):
+        page = doc[p_idx]
+        for q in queries:
+            for quad in page.search_for(q, quads=True) or []:
+                cx = (quad.ul.x + quad.lr.x) / 2
+                cy = (quad.ul.y + quad.lr.y) / 2
+                occ_by_query[q].append((p_idx, cy, cx))
+    for q in occ_by_query:
+        occ_by_query[q].sort(key=lambda t: (t[0], t[1], t[2]))
+
+    for i, anchor in enumerate(anchors):
+        q = normalize_text(anchor.selected_text)
+        occs = occ_by_query.get(q, [])
+        if not occs or not anchor.quads:
+            continue
+        # 找与 anchor 中心最近的 occurrence
+        target_cx = (anchor.quads[0][0] + anchor.quads[0][6]) / 2
+        target_cy = (anchor.quads[0][1] + anchor.quads[0][7]) / 2
+        best_idx, best_d = None, float("inf")
+        for k, (p, cy, cx) in enumerate(occs):
+            if p != anchor.page_index:
+                continue
+            d = (cx - target_cx) ** 2 + (cy - target_cy) ** 2
+            if d < best_d:
+                best_d = d
+                best_idx = k
+        if best_idx is None:
+            continue
+        # 写回（Anchor 是 pydantic frozen=False，可直接修改）
+        anchors[i] = anchor.model_copy(
+            update={
+                "occurrence_rank": best_idx,
+                "total_occurrences": len(occs),
+            }
+        )
 
 
 def _annot_kind(annot: pymupdf.Annot) -> str:

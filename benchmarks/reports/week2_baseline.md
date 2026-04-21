@@ -9,13 +9,22 @@ independent of the matching algorithm.
 
 **Week 3 gate (overall accuracy ≥ 85%) PASSES** on both evaluation pairs.
 
-| Dataset | N | Accuracy | Location accuracy | Remarks |
+| Dataset | N | Accuracy (H2 → H3) | Location accuracy (H2 → H3) | Remarks |
 |---|---:|---:|---:|---|
-| arXiv 1706.03762 v1 → v5 | 39 | **89.7%** | 46.2% | Real paper, minor pagination shift |
-| Revised manuscript (synthetic) | 26 | **88.5%** | 100.0% | Controlled mix of preserved/relocated/changed/broken |
+| arXiv 1706.03762 v1 → v5 | 39 | 89.7% → **92.3%** | 46.2% → **56.4%** | Real paper, minor pagination shift |
+| Revised manuscript (synthetic) | 26 | **88.5%** (unchanged) | **100.0%** (unchanged) | Controlled preserved/relocated/changed/broken mix |
 
-Combined: **87.7% on 65 annotations** (above the 85% gate, 2.7 percentage-
-point margin — not luxurious, but real).
+Combined (H3): **90.8% on 65 annotations** (5.8 pp above the 85% gate).
+
+Week 2 H3 added PRD §8.3's remaining scoring components:
+- `layout_score` (15% weight) with three sub-signals: document-level
+  reading-order rank (60%), within-page y-ratio (30%), within-page
+  x-ratio (10%).
+- `length_similarity` (5% weight).
+
+The reading-order rank signal is what pushed arXiv accuracy up —
+cross-page "k-th occurrence" mappings that text + context alone could
+not resolve now get the correct v2 instance.
 
 Two matcher bugs were found and fixed during this evaluation pass:
 

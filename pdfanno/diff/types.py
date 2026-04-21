@@ -36,6 +36,14 @@ class Anchor(BaseModel):
     context_hash: str = ""
     color: list[float] | None = None
     note: str = ""
+    # Week 2 H3 起新增：v1 page 的宽 / 高，用于 layout_score 归一化。
+    # 旧的 sidecar / plan 里可能没有这两个字段 —— 默认 None，layout 分数退化到 0.5 neutral。
+    page_width: float | None = None
+    page_height: float | None = None
+    # 文档内 `selected_text` 的阅读顺序排名：0-indexed，按 (page, y, x) 排序。
+    # 配合 total_occurrences 做跨页 k-th 映射（解决短 token 的跨页错配）。
+    occurrence_rank: int | None = None
+    total_occurrences: int | None = None
 
 
 class NewAnchor(BaseModel):
@@ -49,15 +57,16 @@ class NewAnchor(BaseModel):
 
 
 class MatchReason(BaseModel):
-    """匹配得分分解。Week 1 只填 selected_text_similarity + page_delta + candidate_rank，
-    其余字段留给 Week 2+ 填充（PRD §8.3 五项打分）。"""
+    """匹配得分分解。PRD §8.3 五项齐全：text / context / layout / page_proximity / length。
+    Week 1 只填 text + page_delta；Week 2 H2 补 context；Week 2 H3 补 layout + length。"""
 
     model_config = _FORWARD_COMPAT
 
     selected_text_similarity: float = 0.0
     context_similarity: float = 0.0
-    page_delta: int = 0
     layout_score: float = 0.0
+    length_similarity: float = 0.0
+    page_delta: int = 0
     candidate_rank: int = 0
 
 

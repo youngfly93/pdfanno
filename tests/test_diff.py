@@ -350,6 +350,68 @@ def test_changed_status_for_edited_in_place_text(tmp_path: Path) -> None:
     assert cs >= 0.70, f"context 应该高，实际 {cs}"
 
 
+def test_layout_score_picks_kth_occurrence_on_same_page(tmp_path: Path) -> None:
+    """同页 3 次 'pivot' 出现，v1 高亮的是中间那个 (y≈130)。v2 顺序相同。
+
+    Week 2 H3 前 (text+context+proximity 都相等)：1:1 allocator 按原 ID 顺序硬分，
+    结果可能对可能不对。加了 layout_score 后，y-ratio 相似度应该把中间→中间、
+    上→上、下→下 这个映射钉死（每条 anchor 的 layout 首选和自己 y 位置最接近的候选）。
+    """
+
+    import pymupdf
+
+    v1 = tmp_path / "v1.pdf"
+    v2 = tmp_path / "v2.pdf"
+
+    def _build(path: Path, annotate: bool) -> None:
+        doc = pymupdf.open()
+        page = doc.new_page(width=595, height=842)
+        page.insert_text((72, 100), "pivot sentence appears at the top of page")
+        page.insert_text((72, 400), "pivot sentence appears in the middle region")
+        page.insert_text((72, 700), "pivot sentence appears near the bottom margin")
+        if annotate:
+            for q in page.search_for("pivot sentence appears", quads=True):
+                annot = page.add_highlight_annot(q)
+                annot.update()
+        doc.save(str(path))
+        doc.close()
+
+    _build(v1, annotate=True)
+    _build(v2, annotate=False)
+
+    report = _run_diff(v1, v2)
+    assert report["summary"]["total_annotations"] == 3
+
+    # 按 v1 anchor 的 y_center 排序，期望 v2 new_anchor.y_center 也单调递增。
+    items = []
+    for r in report["results"]:
+        old_q = r["old_anchor"]["quads"][0]
+        new_q = r["new_anchor"]["quads"][0]
+        old_cy = (old_q[1] + old_q[5]) / 2
+        new_cy = (new_q[1] + new_q[5]) / 2
+        items.append((old_cy, new_cy, r))
+    items.sort(key=lambda t: t[0])
+    new_ys = [t[1] for t in items]
+    # 必须单调递增，且三个 y 分别接近 100/400/700 (±15 pt)
+    assert new_ys == sorted(new_ys), f"layout 没锁 k-th 顺序: {new_ys}"
+    for (_, new_y, _r), expected in zip(items, [100, 400, 700], strict=False):
+        assert abs(new_y - expected) < 25, f"new_y={new_y} 偏离目标 {expected}"
+
+
+def test_match_reason_includes_layout_and_length(pair_identical) -> None:
+    """schema check: Week 2 H3 起 MatchReason 填 layout_score / length_similarity。"""
+
+    v1, v2 = pair_identical
+    report = _run_diff(v1, v2)
+    for r in report["results"]:
+        mr = r["match_reason"]
+        assert "layout_score" in mr, f"layout_score 缺失: {mr}"
+        assert "length_similarity" in mr, f"length_similarity 缺失: {mr}"
+        # identical fixture 下 exact 命中 quad 完全一致 → y/x ratio 完全相等
+        assert mr["layout_score"] >= 0.99, f"identical 下 layout 应接近 1.0: {mr}"
+        assert mr["length_similarity"] == 1.0
+
+
 def test_same_page_shifted_location_is_relocated_not_preserved(tmp_path: Path) -> None:
     """同页同文本但 quad 位置偏移 > 15 pt → 应判 relocated（不再是 preserved）。
 

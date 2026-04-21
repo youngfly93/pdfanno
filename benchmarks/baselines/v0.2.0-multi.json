@@ -1,0 +1,79 @@
+{
+  "version": "0.2.0",
+  "commit": "2da4783",
+  "captured": "2026-04-21",
+  "note": "Multi-benchmark baseline. arXiv = Week 1 spike (39 hand-curated highlights). revised = synthetic fixture. bert = auto-built via benchmarks.fixtures.build_real_pairs (14 phrases).",
+  "benchmarks": {
+    "arxiv_1706.03762_v1_v5": {
+      "overall_accuracy": 0.9231,
+      "location_accuracy": 0.5641,
+      "location_hits": 22,
+      "location_attempts": 39,
+      "paired": 39,
+      "failure_count": 11,
+      "per_status_f1": {
+        "preserved": 0.8235,
+        "relocated": 0.9508
+      },
+      "confusion_matrix": {
+        "relocated": {
+          "relocated": 29
+        },
+        "preserved": {
+          "preserved": 7,
+          "relocated": 3
+        }
+      }
+    },
+    "revised_synthetic": {
+      "overall_accuracy": 0.8846,
+      "location_accuracy": 1.0,
+      "location_hits": 13,
+      "location_attempts": 13,
+      "paired": 26,
+      "failure_count": 3,
+      "per_status_f1": {
+        "preserved": 0.7692,
+        "relocated": 0.7692,
+        "changed": 1.0,
+        "broken": 1.0
+      },
+      "confusion_matrix": {
+        "broken": {
+          "broken": 6
+        },
+        "relocated": {
+          "preserved": 2,
+          "relocated": 5
+        },
+        "preserved": {
+          "preserved": 5,
+          "relocated": 1
+        },
+        "changed": {
+          "changed": 7
+        }
+      }
+    },
+    "bert_1810.04805_v1_v2": {
+      "overall_accuracy": 1.0,
+      "location_accuracy": 0.7857,
+      "location_hits": 11,
+      "location_attempts": 14,
+      "paired": 14,
+      "failure_count": 0,
+      "per_status_f1": {
+        "preserved": 1.0,
+        "relocated": 1.0
+      },
+      "confusion_matrix": {
+        "preserved": {
+          "preserved": 6
+        },
+        "relocated": {
+          "relocated": 8
+        }
+      }
+    }
+  }
+}

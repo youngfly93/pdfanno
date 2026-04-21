@@ -27,6 +27,7 @@ Week 3+ 继续补齐：ambiguous / unsupported / reading-order 精修。
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 
@@ -80,6 +81,16 @@ W_LAYOUT_Y = 0.25
 W_LAYOUT_X = 0.05
 # 缺尺寸 / rank / section 信息时子分数的 neutral 值。
 NEUTRAL_LAYOUT = 0.5
+
+# 环境变量开关：`PDFANNO_DISABLE_SECTION_SIM=1` 把 section 子分数强制退成 NEUTRAL，
+# 用于 counterfactual 测试 —— 证明 section_sim **确实在翻案**，而不是只被代码路径覆盖。
+_SECTION_SIM_ENV_OFF = "PDFANNO_DISABLE_SECTION_SIM"
+
+
+def _section_sim_disabled() -> bool:
+    """每次调用检查 —— 支持测试中 monkeypatch.setenv。"""
+
+    return os.environ.get(_SECTION_SIM_ENV_OFF) == "1"
 
 
 @dataclass(frozen=True)
@@ -380,7 +391,10 @@ def _layout_score(
 
     # section 子分数：两侧都未知视为等价 —— "无信号" 是对称噪声，均匀作用于所有候选；
     # 退 0.5 会静默惩罚每个无 TOC / 无 heading 结构的 PDF。
-    if anchor.section_path and candidate_section_path:
+    # `PDFANNO_DISABLE_SECTION_SIM=1` 时强制 NEUTRAL —— 用于 counterfactual 测试。
+    if _section_sim_disabled():
+        section_sim = NEUTRAL_LAYOUT
+    elif anchor.section_path and candidate_section_path:
         section_sim = 1.0 if anchor.section_path == candidate_section_path else 0.0
     elif anchor.section_path is None and candidate_section_path is None:
         section_sim = 1.0

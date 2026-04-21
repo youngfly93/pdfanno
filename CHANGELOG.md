@@ -45,6 +45,15 @@ TUI (Phase 2) and image rendering (Phase 3) remain out of scope.
 - Sidecar sync stays conservative: `import` captures external annotations
   as read-only sidecar rows; no automatic merge when the underlying PDF is
   modified elsewhere (plan.md §9).
+- **`section_sim` is experimental in v0.2.0.** The signal is wired into
+  `layout_score` (weight 0.20, see `match.W_LAYOUT_SECTION`) and verified
+  directionally correct by `tests/test_cross_section.py`, but no
+  benchmark in this release demonstrates end-to-end decision-flipping on
+  cross-section short-token ambiguity. `_context_window` extracts the
+  anchor's context from the first match position rather than the anchor's
+  own position, which introduces ctx asymmetry that section_sim can't
+  overcome at current weights. Fix + judicial test land in v0.2.1.
+  Toggle off with `PDFANNO_DISABLE_SECTION_SIM=1` if needed.
 
 ### Dependencies
 

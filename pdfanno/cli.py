@@ -14,6 +14,8 @@ import typer
 from pydantic import ValidationError
 
 from pdfanno import __version__
+from pdfanno.diff.anchors import extract_anchors
+from pdfanno.diff.match import diff_against
 from pdfanno.exit_codes import ExitCode
 from pdfanno.logging import Logger, build_logger
 from pdfanno.models import AnnotationPlan, AnnotationRecord, CliResult, PlannedAnnotation, Rule
@@ -524,6 +526,80 @@ def apply(
     except InPlaceSaveRefused as exc:
         logger.error("in-place save refused", reasons=",".join(exc.reasons))
         raise typer.Exit(code=int(ExitCode.PROCESSING_ERROR)) from exc
+
+
+# ----- v0.2 diff / migrate -----
+
+
+@app.command()
+def diff(
+    old_pdf: Path = typer.Argument(..., help="Old-version PDF (with existing annotations)."),  # noqa: B008
+    new_pdf: Path = typer.Argument(..., help="New-version PDF to diff against."),  # noqa: B008
+    as_json: bool = typer.Option(False, "--json", help="Emit the DiffReport as JSON to stdout."),
+    diff_out: Path | None = typer.Option(  # noqa: B008
+        None, "--diff-out", help="Write DiffReport JSON to a file instead of stdout."
+    ),
+    page_window: int = typer.Option(
+        3, "--page-window", help="Search window in pages around the old page index."
+    ),
+    verbose: bool = typer.Option(False, "--verbose"),
+    quiet: bool = typer.Option(False, "--quiet"),
+    log_format: str = typer.Option("text", "--log-format"),
+) -> None:
+    """Compare annotations across two PDF versions (preserved / relocated / broken)."""
+
+    logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
+    old_path = resolve_path(old_pdf)
+    new_path = resolve_path(new_pdf)
+    _require_input_exists(old_path, logger)
+    _require_input_exists(new_path, logger)
+
+    # Week 1 PoC 只用 page_window 当 match 阈值输入 —— 直接改 module-level 常量不合适，
+    # 后续 Week 2 重构为 diff_against(..., page_window=...)。这里先警告不等于默认。
+    from pdfanno.diff import match as _match_mod
+
+    _match_mod.PAGE_WINDOW = page_window
+
+    with open_pdf(old_path) as old_doc:
+        old_doc_id = compute_doc_id(old_doc, old_path)
+        anchors = extract_anchors(old_doc, old_doc_id)
+
+    with open_pdf(new_path) as new_doc:
+        new_doc_id = compute_doc_id(new_doc, new_path)
+        report = diff_against(anchors, new_doc, new_doc_id)
+
+    payload = report.model_dump(mode="json")
+
+    if diff_out is not None:
+        diff_out = resolve_path(diff_out)
+        diff_out.parent.mkdir(parents=True, exist_ok=True)
+        diff_out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        if not as_json:
+            typer.echo(f"wrote diff report to {diff_out}")
+            _emit_diff_summary(report)
+            return
+
+    if as_json:
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        _emit_diff_summary(report)
+
+
+def _emit_diff_summary(report) -> None:
+    s = report.summary
+    typer.echo(
+        f"diff: total={s.total_annotations} "
+        f"preserved={s.preserved} relocated={s.relocated} "
+        f"changed={s.changed} ambiguous={s.ambiguous} broken={s.broken}"
+    )
+    for r in report.results[:20]:
+        loc = r.new_anchor.page_index if r.new_anchor else "-"
+        typer.echo(
+            f"  [{r.status}] conf={r.confidence:.2f} "
+            f"page {r.old_anchor.page_index} -> {loc} | {r.message}"
+        )
+    if len(report.results) > 20:
+        typer.echo(f"  ... {len(report.results) - 20} more (use --json to see all)")
 
 
 # ----- sidecar commands: status / import / export / rebind -----

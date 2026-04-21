@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.fixtures import _build
+from tests.fixtures import _build, _build_versions
 
 
 @pytest.fixture(autouse=True)
@@ -64,3 +64,27 @@ def scanned_no_text_pdf(fixtures_dir: Path) -> Path:
 @pytest.fixture(scope="session")
 def encrypted_pdf(fixtures_dir: Path) -> Path:
     return fixtures_dir / "encrypted.pdf"
+
+
+# ---------- v0.2 diff 用的版本对 ----------
+
+
+@pytest.fixture(scope="session")
+def version_pairs_dir(tmp_path_factory: pytest.TempPathFactory) -> dict[str, tuple[Path, Path]]:
+    base = tmp_path_factory.mktemp("pdfanno-version-pairs")
+    return _build_versions.build_all_pairs(base)
+
+
+@pytest.fixture(scope="session")
+def pair_identical(version_pairs_dir) -> tuple[Path, Path]:
+    return version_pairs_dir["identical"]
+
+
+@pytest.fixture(scope="session")
+def pair_reordered(version_pairs_dir) -> tuple[Path, Path]:
+    return version_pairs_dir["reordered"]
+
+
+@pytest.fixture(scope="session")
+def pair_partial(version_pairs_dir) -> tuple[Path, Path]:
+    return version_pairs_dir["partial"]

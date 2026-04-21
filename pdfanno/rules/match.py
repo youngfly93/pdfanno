@@ -63,7 +63,8 @@ def _plan_single_rule(doc: pymupdf.Document, doc_id: str, rule: Rule) -> list[Pl
 def parse_page_range(spec: str | None, page_count: int) -> set[int] | None:
     """解析 1-indexed 的 "1-3,5,7-9" → 0-indexed 页号集合。None 表示不过滤。
 
-    越界值截断，不抛异常；整个 spec 语法错才抛 ValueError。
+    plan.md §12: page range 越界属于 usage error。任何段落引用 [1, page_count]
+    之外的页号都会抛 ValueError；调用方应映射到 ExitCode.USAGE_ERROR。
     """
 
     if spec is None or not spec.strip():
@@ -82,16 +83,19 @@ def parse_page_range(spec: str | None, page_count: int) -> set[int] | None:
                 raise ValueError(f"bad page range segment: {part!r}") from exc
             if lo_i > hi_i:
                 lo_i, hi_i = hi_i, lo_i
-            lo_i = max(1, lo_i)
-            hi_i = min(page_count, hi_i)
+            if lo_i < 1 or hi_i > page_count:
+                raise ValueError(
+                    f"page range {part!r} out of bounds for a {page_count}-page document"
+                )
             pages.update(range(lo_i - 1, hi_i))
         else:
             try:
                 p = int(part)
             except ValueError as exc:
                 raise ValueError(f"bad page number: {part!r}") from exc
-            if 1 <= p <= page_count:
-                pages.add(p - 1)
+            if not 1 <= p <= page_count:
+                raise ValueError(f"page {p} out of bounds for a {page_count}-page document")
+            pages.add(p - 1)
     return pages
 
 

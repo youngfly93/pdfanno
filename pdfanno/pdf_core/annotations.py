@@ -109,6 +109,70 @@ def read_annotations(doc: pymupdf.Document) -> list[ExistingAnnotation]:
     return out
 
 
+def read_annotation_quads(doc: pymupdf.Document) -> list[dict]:
+    """读取现有注释并还原其 quads（或退化为 rect 的点四元组）。
+
+    供 `extract --format plan` 使用。返回的 dict 包含 annotation_id（从 /NM）、
+    page、kind、quads（8-float list-of-list）、color、contents、rect、subject。
+    """
+
+    out: list[dict] = []
+    for page_idx in range(doc.page_count):
+        page = doc[page_idx]
+        for annot in page.annots() or []:
+            info = annot.info
+            colors = annot.colors or {}
+            stroke = colors.get("stroke") or [1.0, 1.0, 0.0]
+            color = [float(c) for c in stroke]
+            quads = _extract_quads(annot)
+            out.append(
+                {
+                    "annotation_id": _read_annot_name(doc, annot),
+                    "page": page_idx,
+                    "kind": _annot_kind_name(annot),
+                    "quads": quads,
+                    "color": color,
+                    "contents": info.get("content", "") or "",
+                    "subject": info.get("subject", "") or "",
+                    "xref": annot.xref,
+                }
+            )
+    return out
+
+
+def _extract_quads(annot: pymupdf.Annot) -> list[list[float]]:
+    """从 annot 读取 quads（8 floats 一组）。
+
+    对 highlight / underline / strikeout / squiggly，PyMuPDF 暴露 vertices 为点序列。
+    对 text/freetext 等无 quad 的注释，用 rect 的四个角退化成一个 quad。
+    """
+
+    vertices = getattr(annot, "vertices", None)
+    if vertices and len(vertices) >= 4 and len(vertices) % 4 == 0:
+        quads: list[list[float]] = []
+        for i in range(0, len(vertices), 4):
+            pts = vertices[i : i + 4]
+            quads.append([float(pts[0][0]), float(pts[0][1]),
+                          float(pts[1][0]), float(pts[1][1]),
+                          float(pts[2][0]), float(pts[2][1]),
+                          float(pts[3][0]), float(pts[3][1])])  # fmt: skip
+        return quads
+
+    rect = annot.rect
+    return [
+        [
+            rect.x0,
+            rect.y0,
+            rect.x1,
+            rect.y0,
+            rect.x0,
+            rect.y1,
+            rect.x1,
+            rect.y1,
+        ]  # fmt: skip
+    ]
+
+
 def existing_pdfanno_ids(doc: pymupdf.Document) -> set[str]:
     """返回 PDF 里已有、由 pdfanno 创建的注释 id 集合，用于幂等去重。"""
 

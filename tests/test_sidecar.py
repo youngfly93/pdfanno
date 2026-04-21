@@ -65,11 +65,16 @@ def test_export_writes_drafts_and_marks_written(simple_pdf: Path, tmp_path: Path
     assert payload["annotations_created"] >= 1
     assert out.exists()
 
-    # export 完成后，status 应显示 written。
+    # export 完成后，status 应显示 written 并携带真实 pdf_xref（非 0）。
     r = runner.invoke(app, ["status", str(local), "--json"])
-    counts = json.loads(r.stdout)["counts"]
+    status_payload = json.loads(r.stdout)
+    counts = status_payload["counts"]
     assert counts["written"] >= 1
     assert counts["draft"] == 0
+    written_entries = [e for e in status_payload["entries"] if e["state"] == "written"]
+    assert all(e["pdf_xref"] and e["pdf_xref"] > 0 for e in written_entries), (
+        "written entries must carry a real pdf_xref from the exported file"
+    )
 
 
 def test_export_dry_run_writes_nothing(simple_pdf: Path, tmp_path: Path) -> None:

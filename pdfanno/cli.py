@@ -22,6 +22,7 @@ from pdfanno.pdf_core.annotations import (
     add_highlight,
     add_note,
     existing_pdfanno_ids,
+    read_annotation_quads,
     read_annotations,
 )
 from pdfanno.pdf_core.colors import parse_color
@@ -57,10 +58,14 @@ def _version_callback(value: bool) -> None:
 @app.callback()
 def main(
     version: bool = typer.Option(  # noqa: B008
-        False, "--version", callback=_version_callback, is_eager=True, help="打印版本并退出。"
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Print version and exit.",
     ),
 ) -> None:
-    """pdfanno 根入口。子命令通过 `pdfanno SUBCOMMAND ...` 调用。"""
+    """pdfanno root entry point. Invoke subcommands as `pdfanno SUBCOMMAND ...`."""
 
     _ = version
 
@@ -70,23 +75,42 @@ def main(
 
 @app.command()
 def highlight(
-    input: Path = typer.Argument(..., help="输入 PDF 路径。"),  # noqa: B008
-    needle: str = typer.Argument(..., help="要搜索并高亮的 literal 字符串。"),
+    input: Path = typer.Argument(..., help="Input PDF path."),  # noqa: B008
+    needle: str = typer.Argument(..., help="Literal string to search and highlight."),
     output: Path | None = typer.Option(  # noqa: B008
-        None, "-o", "--output", help="输出 PDF 路径。与 --in-place / --sidecar 互斥。"
+        None,
+        "-o",
+        "--output",
+        help="Output PDF path. Mutually exclusive with --in-place / --sidecar.",
     ),
-    in_place: bool = typer.Option(False, "--in-place", help="原地增量写回。安全检查不过则拒绝。"),
-    sidecar: bool = typer.Option(False, "--sidecar", help="仅写入 sidecar 草稿，不触碰 PDF。"),
-    color: str = typer.Option("yellow", "--color", help="命名色或 'r,g,b' 三元组。"),
-    page_range: str | None = typer.Option(None, "--pages", help="限制页号，如 '1-3,5'。"),
-    ignore_case: bool = typer.Option(False, "--ignore-case", help="不区分大小写。"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="只生成 plan，不写任何文件。"),
-    as_json: bool = typer.Option(False, "--json", help="输出 JSON 到 stdout。"),
+    in_place: bool = typer.Option(
+        False,
+        "--in-place",
+        help="Save in place (incremental). Refuses encrypted / signed / XFA / JS PDFs.",
+    ),
+    sidecar: bool = typer.Option(
+        False, "--sidecar", help="Write to the sidecar store as a draft; do not modify the PDF."
+    ),
+    color: str = typer.Option(
+        "yellow",
+        "--color",
+        help="Named color (yellow/green/blue/pink/orange/red/purple) or 'r,g,b' triplet.",
+    ),
+    page_range: str | None = typer.Option(
+        None, "--pages", help="Restrict to page numbers (1-indexed), e.g. '1-3,5'."
+    ),
+    ignore_case: bool = typer.Option(False, "--ignore-case", help="Case-insensitive matching."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Build an AnnotationPlan without writing files."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
-    log_format: str = typer.Option("text", "--log-format", help="text 或 json。"),
+    log_format: str = typer.Option(
+        "text", "--log-format", help="Log format: text or json (stderr)."
+    ),
 ) -> None:
-    """在 INPUT 中搜索 NEEDLE 并写 highlight 到 OUTPUT、原地或 sidecar。"""
+    """Search INPUT for NEEDLE and write highlights to OUTPUT, in place, or to the sidecar."""
 
     logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
     input_path = resolve_path(input)
@@ -177,13 +201,13 @@ def highlight(
 
 @app.command(name="list")
 def list_cmd(
-    input: Path = typer.Argument(..., help="输入 PDF 路径。"),  # noqa: B008
-    as_json: bool = typer.Option(False, "--json", help="输出 JSON 到 stdout。"),
+    input: Path = typer.Argument(..., help="Input PDF path."),  # noqa: B008
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
     log_format: str = typer.Option("text", "--log-format"),
 ) -> None:
-    """列出 PDF 中现有的所有 annotation。"""
+    """List every existing annotation in the PDF."""
 
     logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
     input_path = resolve_path(input)
@@ -220,16 +244,18 @@ def list_cmd(
 
 @app.command()
 def search(
-    input: Path = typer.Argument(..., help="输入 PDF 路径。"),  # noqa: B008
-    needle: str = typer.Argument(..., help="要搜索的 literal 字符串。"),
-    page_range: str | None = typer.Option(None, "--pages", help="限制页号，如 '1-3,5'。"),
+    input: Path = typer.Argument(..., help="Input PDF path."),  # noqa: B008
+    needle: str = typer.Argument(..., help="Literal string to search for."),
+    page_range: str | None = typer.Option(
+        None, "--pages", help="Restrict to page numbers (1-indexed), e.g. '1-3,5'."
+    ),
     ignore_case: bool = typer.Option(False, "--ignore-case"),
-    as_json: bool = typer.Option(False, "--json", help="输出 JSON 到 stdout。"),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON to stdout."),
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
     log_format: str = typer.Option("text", "--log-format"),
 ) -> None:
-    """只搜索不写入，返回命中位置与稳定 annotation_id。"""
+    """Search without writing; emit match locations and stable annotation IDs."""
 
     logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
     input_path = resolve_path(input)
@@ -263,12 +289,17 @@ def search(
 
 @app.command()
 def note(
-    input: Path = typer.Argument(..., help="输入 PDF 路径。"),  # noqa: B008
-    page: int = typer.Option(..., "--page", help="页号，1-indexed。"),
-    text: str = typer.Option(..., "--text", help="注释正文。"),
-    point: str = typer.Option("50,50", "--point", help="PDF 点坐标 'x,y'，默认 '50,50'。"),
+    input: Path = typer.Argument(..., help="Input PDF path."),  # noqa: B008
+    page: int = typer.Option(..., "--page", help="Page number (1-indexed)."),
+    text: str = typer.Option(..., "--text", help="Annotation body text."),
+    point: str = typer.Option(
+        "50,50", "--point", help="PDF point coordinates 'x,y', default '50,50'."
+    ),
     output: Path | None = typer.Option(  # noqa: B008
-        None, "-o", "--output", help="输出 PDF 路径。与 --in-place / --sidecar 互斥。"
+        None,
+        "-o",
+        "--output",
+        help="Output PDF path. Mutually exclusive with --in-place / --sidecar.",
     ),
     in_place: bool = typer.Option(False, "--in-place"),
     sidecar: bool = typer.Option(False, "--sidecar"),
@@ -278,7 +309,7 @@ def note(
     quiet: bool = typer.Option(False, "--quiet"),
     log_format: str = typer.Option("text", "--log-format"),
 ) -> None:
-    """在 PAGE 指定位置添加 sticky text annotation。"""
+    """Add a sticky text annotation at the given page and point."""
 
     logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
     input_path = resolve_path(input)
@@ -369,32 +400,40 @@ def note(
 
 @app.command()
 def extract(
-    input: Path = typer.Argument(..., help="输入 PDF 路径。"),  # noqa: B008
-    fmt: str = typer.Option("json", "--format", help="json 或 markdown。"),
+    input: Path = typer.Argument(..., help="Input PDF path."),  # noqa: B008
+    fmt: str = typer.Option("json", "--format", help="Output format: json, markdown, or plan."),
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
     log_format: str = typer.Option("text", "--log-format"),
 ) -> None:
-    """把 PDF 里的 annotation 导出为 JSON 或 Markdown。"""
+    """Export annotations as JSON, Markdown, or a complete AnnotationPlan."""
 
     logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
     input_path = resolve_path(input)
     _require_input_exists(input_path, logger)
 
-    if fmt not in ("json", "markdown"):
-        logger.error("format must be json or markdown", got=fmt)
+    if fmt not in ("json", "markdown", "plan"):
+        logger.error("format must be json, markdown, or plan", got=fmt)
         raise typer.Exit(code=int(ExitCode.USAGE_ERROR))
 
     with open_pdf(input_path) as doc:
-        annotations = read_annotations(doc)
+        doc_id = compute_doc_id(doc, input_path)
+        if fmt == "plan":
+            details = read_annotation_quads(doc)
+        else:
+            annotations = read_annotations(doc)
 
     if fmt == "json":
         payload = {
             "schema_version": 1,
             "input": str(input_path),
+            "doc_id": doc_id,
             "annotations": _serialize_existing(annotations),
         }
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif fmt == "plan":
+        plan = _plan_from_existing(doc_id, details)
+        typer.echo(json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2))
     else:
         typer.echo(f"# Annotations extracted from {input_path.name}\n")
         for a in annotations:
@@ -410,10 +449,10 @@ def extract(
 
 @app.command()
 def apply(
-    input: Path = typer.Argument(..., help="输入 PDF 路径。"),  # noqa: B008
-    plan_file: Path = typer.Argument(..., help="AnnotationPlan JSON 文件。"),  # noqa: B008
+    input: Path = typer.Argument(..., help="Input PDF path."),  # noqa: B008
+    plan_file: Path = typer.Argument(..., help="AnnotationPlan JSON file."),  # noqa: B008
     output: Path | None = typer.Option(  # noqa: B008
-        None, "-o", "--output", help="输出 PDF 路径。与 --in-place 互斥。"
+        None, "-o", "--output", help="Output PDF path. Mutually exclusive with --in-place."
     ),
     in_place: bool = typer.Option(False, "--in-place"),
     dry_run: bool = typer.Option(False, "--dry-run"),
@@ -423,7 +462,7 @@ def apply(
     quiet: bool = typer.Option(False, "--quiet"),
     log_format: str = typer.Option("text", "--log-format"),
 ) -> None:
-    """按照 AnnotationPlan JSON 批量创建 annotation。"""
+    """Apply an AnnotationPlan JSON file to the PDF (idempotent by default)."""
 
     logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
     input_path = resolve_path(input)
@@ -492,13 +531,13 @@ def apply(
 
 @app.command()
 def status(
-    input: Path = typer.Argument(..., help="输入 PDF 路径。"),  # noqa: B008
+    input: Path = typer.Argument(..., help="Input PDF path."),  # noqa: B008
     as_json: bool = typer.Option(False, "--json"),
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
     log_format: str = typer.Option("text", "--log-format"),
 ) -> None:
-    """报告 INPUT 对应 sidecar 中的 draft / written 状态。"""
+    """Report draft / written sidecar state for INPUT."""
 
     logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
     input_path = resolve_path(input)
@@ -540,13 +579,13 @@ def status(
 
 @app.command(name="import")
 def import_cmd(
-    input: Path = typer.Argument(..., help="输入 PDF 路径。"),  # noqa: B008
+    input: Path = typer.Argument(..., help="Input PDF path."),  # noqa: B008
     as_json: bool = typer.Option(False, "--json"),
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
     log_format: str = typer.Option("text", "--log-format"),
 ) -> None:
-    """把 PDF 内既有注释复制为 sidecar 记录（只读，不修改 PDF）。"""
+    """Copy existing PDF annotations into the sidecar (read-only; PDF is not modified)."""
 
     logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
     input_path = resolve_path(input)
@@ -581,9 +620,9 @@ def import_cmd(
 
 @app.command()
 def export(
-    input: Path = typer.Argument(..., help="输入 PDF 路径。"),  # noqa: B008
+    input: Path = typer.Argument(..., help="Input PDF path."),  # noqa: B008
     output: Path = typer.Option(  # noqa: B008
-        ..., "-o", "--output", help="输出 PDF 路径。"
+        ..., "-o", "--output", help="Output PDF path."
     ),
     dry_run: bool = typer.Option(False, "--dry-run"),
     as_json: bool = typer.Option(False, "--json"),
@@ -591,7 +630,7 @@ def export(
     quiet: bool = typer.Option(False, "--quiet"),
     log_format: str = typer.Option("text", "--log-format"),
 ) -> None:
-    """把 sidecar 中的 draft 条目写入 OUTPUT。原 INPUT 不被修改。"""
+    """Write sidecar drafts into OUTPUT. INPUT is left untouched."""
 
     logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
     input_path = resolve_path(input)
@@ -624,6 +663,7 @@ def export(
     try:
         with open_pdf(input_path) as doc:
             created = 0
+            written_ids: list[str] = []
             for e in drafts:
                 if e["page"] < 0 or e["page"] >= doc.page_count:
                     continue
@@ -638,6 +678,7 @@ def export(
                         contents=e["contents"],
                     )
                     created += 1
+                    written_ids.append(e["annotation_id"])
                 elif e["kind"] == "note":
                     pt = _note_point_from_quads(e["quads"])
                     add_note(
@@ -648,15 +689,26 @@ def export(
                         annotation_id=e["annotation_id"],
                     )
                     created += 1
+                    written_ids.append(e["annotation_id"])
             save_to_new_file(doc, output_path)
     except Exception as exc:  # pragma: no cover
         logger.error("export save failed", error=repr(exc))
         raise typer.Exit(code=int(ExitCode.PROCESSING_ERROR)) from exc
 
-    # 标记写回的 drafts 为 written（sidecar 状态）。
+    # 重新打开 output 以读取每条注释在导出文件中的真实 xref，写回 sidecar。
+    # 理由：doc.save 后内存 doc 的 xref 可能与文件中的不一致；sidecar 记录的是导出文件的 xref。
+    with open_pdf(output_path) as out_doc:
+        id_to_xref = {a.name: a.xref for a in read_annotations(out_doc) if a.name}
+
     with Sidecar() as store:
         for e in drafts:
-            store.mark_written(doc_id, e["annotation_id"], pdf_xref=0)
+            if e["annotation_id"] not in written_ids:
+                continue
+            store.mark_written(
+                doc_id,
+                e["annotation_id"],
+                pdf_xref=id_to_xref.get(e["annotation_id"], 0),
+            )
 
     result = CliResult(
         command="export",
@@ -673,17 +725,17 @@ def export(
 
 @app.command()
 def rebind(
-    old_path: Path = typer.Argument(..., help="旧 PDF 路径。"),  # noqa: B008
-    new_path: Path = typer.Argument(..., help="新 PDF 路径。"),  # noqa: B008
+    old_path: Path = typer.Argument(..., help="Old PDF path."),  # noqa: B008
+    new_path: Path = typer.Argument(..., help="New PDF path."),  # noqa: B008
     explicit_doc_id: str | None = typer.Option(
-        None, "--doc-id", help="旧 PDF 已不可访问时显式提供 doc_id。"
+        None, "--doc-id", help="Provide doc_id explicitly when the old PDF is no longer accessible."
     ),
     as_json: bool = typer.Option(False, "--json"),
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
     log_format: str = typer.Option("text", "--log-format"),
 ) -> None:
-    """把 sidecar 中绑定到 OLD 的条目迁到 NEW。"""
+    """Migrate sidecar entries bound to OLD over to NEW."""
 
     logger = build_logger(verbose=verbose, quiet=quiet, log_format=log_format)
     new_resolved = resolve_path(new_path)
@@ -801,6 +853,42 @@ def _write_plan_to_sidecar(input_path: Path, plan: AnnotationPlan) -> int:
             store.upsert_entry(rec, state=STATE_DRAFT)
             created += 1
     return created
+
+
+def _plan_from_existing(doc_id: str, details: list[dict]) -> AnnotationPlan:
+    """把 `read_annotation_quads` 的输出打包成 AnnotationPlan，可直接喂给 `apply`。
+
+    外部阅读器创建、没有 /NM 的注释会合成 `ext:<xref>` 作为 annotation_id —— 保证跨机器
+    唯一（在 `apply` 里会被 dedup 视为同一条）。kind 不是 highlight/note 的记录跳过。
+    """
+
+    rule = Rule(
+        rule_id="extracted",
+        kind="highlight",
+        query="<from extract>",
+        mode="literal",
+        color=[1.0, 1.0, 0.0],
+    )
+    annotations: list[PlannedAnnotation] = []
+    for d in details:
+        kind = d["kind"]
+        if kind not in ("highlight", "text", "note"):
+            continue
+        annotation_id = d["annotation_id"] or f"ext:{doc_id}:{d['xref']}"
+        annotations.append(
+            PlannedAnnotation(
+                annotation_id=annotation_id,
+                rule_id=rule.rule_id,
+                kind="highlight" if kind == "highlight" else "note",
+                page=d["page"],
+                matched_text=d["contents"] or "",
+                quads=d["quads"],
+                color=d["color"],
+                contents=d["contents"] or "",
+                source="pdf",
+            )
+        )
+    return AnnotationPlan(doc_id=doc_id, rules=[rule], annotations=annotations)
 
 
 def _plan_annotation_to_record(

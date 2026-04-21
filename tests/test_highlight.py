@@ -97,3 +97,41 @@ def test_highlight_rejects_same_path_as_output(simple_pdf: Path, tmp_path: Path)
         app, ["highlight", str(local_input), "transformer", "-o", str(local_input)]
     )
     assert result.exit_code == ExitCode.USAGE_ERROR
+
+
+def _build_mixed_case_pdf(path: Path) -> None:
+    """构造含 'Transformer'（大写 T）的单页 PDF，用于 case-sensitive 测试。"""
+
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), "Transformer is capitalized here")
+    page.insert_text((72, 140), "and Transformer appears again")
+    doc.save(str(path))
+    doc.close()
+
+
+def test_literal_mode_is_case_sensitive(tmp_path: Path) -> None:
+    """literal 模式下，小写 query 不应命中大写文本。"""
+
+    fx = tmp_path / "mixed.pdf"
+    _build_mixed_case_pdf(fx)
+    out = tmp_path / "out.pdf"
+    r = runner.invoke(app, ["highlight", str(fx), "transformer", "-o", str(out), "--json"])
+    assert r.exit_code == ExitCode.SUCCESS, r.output
+    assert json.loads(r.stdout)["matches"] == 0
+
+
+def test_ignore_case_matches_mixed_case(tmp_path: Path) -> None:
+    """--ignore-case 下，小写 query 命中大写 'Transformer'。"""
+
+    fx = tmp_path / "mixed.pdf"
+    _build_mixed_case_pdf(fx)
+    out = tmp_path / "out.pdf"
+    r = runner.invoke(
+        app,
+        ["highlight", str(fx), "transformer", "-o", str(out), "--ignore-case", "--json"],
+    )
+    assert r.exit_code == ExitCode.SUCCESS, r.output
+    assert json.loads(r.stdout)["matches"] >= 2

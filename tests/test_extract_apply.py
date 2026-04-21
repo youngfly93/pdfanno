@@ -65,6 +65,33 @@ def test_apply_dry_run_schema_matches_real_run(simple_pdf: Path, tmp_path: Path)
     assert real_payload["annotations_created"] == real_payload["annotations_planned"]
 
 
+def test_extract_plan_format_produces_valid_plan(simple_pdf: Path, tmp_path: Path) -> None:
+    """extract --format plan 输出的 JSON 应是一个 apply 可直接吃的 AnnotationPlan。"""
+
+    hl = tmp_path / "hl.pdf"
+    runner.invoke(app, ["highlight", str(simple_pdf), "transformer", "-o", str(hl)])
+
+    ext = runner.invoke(app, ["extract", str(hl), "--format", "plan"])
+    assert ext.exit_code == ExitCode.SUCCESS, ext.output
+
+    plan_obj = json.loads(ext.stdout)
+    assert plan_obj["schema_version"] == 1
+    assert "doc_id" in plan_obj
+    assert len(plan_obj["rules"]) >= 1
+    assert len(plan_obj["annotations"]) >= 1
+    for a in plan_obj["annotations"]:
+        assert {"annotation_id", "page", "kind", "quads", "color"} <= a.keys()
+        assert len(a["quads"][0]) == 8  # 8 floats per quad
+
+    # 把 plan 直接喂给 apply → 因为 annotation_id 都已存在于 hl，dedup 后 created 应为 0。
+    plan_file = tmp_path / "extracted.json"
+    plan_file.write_text(json.dumps(plan_obj), encoding="utf-8")
+    applied = tmp_path / "applied.pdf"
+    a = runner.invoke(app, ["apply", str(hl), str(plan_file), "-o", str(applied), "--json"])
+    assert a.exit_code == ExitCode.SUCCESS, a.output
+    assert json.loads(a.stdout)["annotations_created"] == 0
+
+
 def test_apply_roundtrip_from_extract(simple_pdf: Path, tmp_path: Path) -> None:
     """highlight → extract → 手工构造 plan → apply 到新文件 → list 回读 id 一致。"""
 

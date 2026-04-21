@@ -81,10 +81,21 @@ def test_missing_output_without_in_place_errors(simple_pdf: Path) -> None:
     assert r.exit_code == ExitCode.USAGE_ERROR
 
 
-def test_page_range_filters_pages(simple_pdf: Path, tmp_path: Path) -> None:
-    # simple 只有一页，--pages 2 应 0 命中；--pages 1 应正常。
+def test_page_range_out_of_bounds_is_usage_error(simple_pdf: Path, tmp_path: Path) -> None:
+    """plan.md §12: page range 越界返回 exit 2（usage error），不是静默 0 命中。"""
+
     out = tmp_path / "out.pdf"
-    r_none = runner.invoke(
+    r = runner.invoke(
+        app,
+        ["highlight", str(simple_pdf), "transformer", "-o", str(out), "--pages", "2"],
+    )
+    assert r.exit_code == ExitCode.USAGE_ERROR
+    assert not out.exists()
+
+
+def test_page_range_valid_filters_pages(simple_pdf: Path, tmp_path: Path) -> None:
+    out = tmp_path / "out.pdf"
+    r = runner.invoke(
         app,
         [
             "highlight",
@@ -93,26 +104,9 @@ def test_page_range_filters_pages(simple_pdf: Path, tmp_path: Path) -> None:
             "-o",
             str(out),
             "--pages",
-            "2",
-            "--json",
-        ],
-    )
-    assert r_none.exit_code == ExitCode.SUCCESS, r_none.output
-    assert json.loads(r_none.stdout)["matches"] == 0
-
-    out2 = tmp_path / "out2.pdf"
-    r_ok = runner.invoke(
-        app,
-        [
-            "highlight",
-            str(simple_pdf),
-            "transformer",
-            "-o",
-            str(out2),
-            "--pages",
             "1",
             "--json",
         ],
     )
-    assert r_ok.exit_code == ExitCode.SUCCESS, r_ok.output
-    assert json.loads(r_ok.stdout)["matches"] >= 1
+    assert r.exit_code == ExitCode.SUCCESS, r.output
+    assert json.loads(r.stdout)["matches"] >= 1

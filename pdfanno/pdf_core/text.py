@@ -32,26 +32,41 @@ def normalize_text(text: str) -> str:
 def search_page(page: pymupdf.Page, needle: str, *, ignore_case: bool = False) -> list[TextMatch]:
     """在单页中搜索 literal 串。
 
-    PyMuPDF 对跨行命中返回多个 quads，且不暴露 "一条命中边界"。Stage A 的策略是：
-    每个 quad 当作一条独立命中，生成独立 annotation_id。跨行查询会产出多条高亮，
-    视觉上等价于每行分别高亮，也满足幂等（re-run 各自 dedup）。
+    PyMuPDF 对跨行命中返回多个 quads，且不暴露 "一条命中边界"。策略：每个 quad 当作一条
+    独立命中，生成独立 annotation_id。跨行查询会产出多条高亮，视觉上等价于每行分别高亮，
+    也满足幂等（re-run 各自 dedup）。
 
-    注：PyMuPDF 默认对 ASCII 字母忽略大小写（历史行为），参数 `ignore_case` 当前不改变行为，
-    留作 Stage B 的 page.get_text("words") 路径的扩展位。
+    PyMuPDF 的 `search_for` 对 ASCII 字母是 case-insensitive 的。`ignore_case=True` 直接
+    复用该行为；`ignore_case=False`（literal，大小写敏感）对每个候选 quad 做 post-filter：
+    读取该 quad 区域的实际文本，断言 `needle` 作为子串严格存在。
     """
 
-    _ = ignore_case  # Stage A 不再额外处理；保留参数以便 Stage B 扩展。
     quads = page.search_for(needle, quads=True)
     if not quads:
         return []
-    return [
-        TextMatch(
-            page=page.number,
-            matched_text=needle,
-            quads=[_quad_to_floats(q)],
+
+    matches: list[TextMatch] = []
+    for q in quads:
+        if not ignore_case and not _quad_contains_literal(page, q, needle):
+            continue
+        matches.append(
+            TextMatch(
+                page=page.number,
+                matched_text=needle,
+                quads=[_quad_to_floats(q)],
+            )
         )
-        for q in quads
-    ]
+    return matches
+
+
+def _quad_contains_literal(page: pymupdf.Page, quad: pymupdf.Quad, needle: str) -> bool:
+    """读取 quad 覆盖区域的实际文本，大小写敏感地断言 needle 是其子串。
+
+    `page.get_textbox(rect)` 返回矩形区域内的纯文本；对 pdfanno 目标场景（论文）足够精确。
+    """
+
+    actual = page.get_textbox(quad.rect) or ""
+    return needle in actual
 
 
 def _quad_to_floats(quad: pymupdf.Quad) -> list[float]:

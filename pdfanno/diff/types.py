@@ -1,8 +1,9 @@
 """diff/migrate 数据契约 —— 与 PRD §7.1 / §7.2 / §5.1 对齐。
 
 Week 1 PoC 仅实装三档状态（preserved / relocated / broken）。PRD 另定义
-`changed` / `ambiguous` / `unsupported`，由 Week 2+ 扩展；`status` 字段用 str
-而不是 Literal，保证后续扩展不破坏老 parser。
+`changed` / `ambiguous` / `unsupported`，由 Week 2+ 扩展。`status` 当前用
+`Literal[...]` 联合类型声明（见下方 `DiffStatus`）；新增状态时在联合里追加，
+pydantic `extra="allow"` 保证老 parser 能忽略未知字段但不会静默吞未知 status。
 """
 
 from __future__ import annotations

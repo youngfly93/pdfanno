@@ -27,7 +27,7 @@ from pdfanno.diff.types import (
 )
 from pdfanno.pdf_core.text import normalize_text
 
-PAGE_WINDOW = 3
+DEFAULT_PAGE_WINDOW = 3
 FUZZY_THRESHOLD = 0.85
 
 
@@ -46,15 +46,26 @@ class _PageView:
 
 
 def diff_against(
-    old_anchors: list[Anchor], new_doc: pymupdf.Document, new_doc_id: str
+    old_anchors: list[Anchor],
+    new_doc: pymupdf.Document,
+    new_doc_id: str,
+    *,
+    page_window: int = DEFAULT_PAGE_WINDOW,
 ) -> DiffReport:
-    """对一组旧 anchor 在 new_doc 中逐条 diff。"""
+    """对一组旧 anchor 在 new_doc 中逐条 diff。
+
+    `page_window` 控制候选页搜索窗口：exact 命中先在 [old_page ± page_window] 内找，
+    失败再全局搜。必须 >= 0。
+    """
+
+    if page_window < 0:
+        raise ValueError(f"page_window must be >= 0, got {page_window}")
 
     pages = [_PageView.from_page(new_doc[i]) for i in range(new_doc.page_count)]
 
     results: list[DiffResult] = []
     for anchor in old_anchors:
-        results.append(_diff_one(anchor, pages))
+        results.append(_diff_one(anchor, pages, page_window=page_window))
 
     summary = _summarize(results)
     return DiffReport(
@@ -65,7 +76,7 @@ def diff_against(
     )
 
 
-def _diff_one(anchor: Anchor, pages: list[_PageView]) -> DiffResult:
+def _diff_one(anchor: Anchor, pages: list[_PageView], *, page_window: int) -> DiffResult:
     norm_sel = normalize_text(anchor.selected_text)
     if not norm_sel:
         return _broken(
@@ -79,8 +90,9 @@ def _diff_one(anchor: Anchor, pages: list[_PageView]) -> DiffResult:
     if same_page is not None and norm_sel in same_page.normalized:
         return _preserved(anchor, same_page, norm_sel)
 
-    # 2. old_page ± WINDOW exact
-    for candidate in _pages_within_window(pages, anchor.page_index, PAGE_WINDOW):
+    # 2. old_page ± page_window exact
+    window_indices = _window_indices(pages, anchor.page_index, page_window)
+    for candidate in _pages_within_window(pages, anchor.page_index, page_window):
         if candidate.index == anchor.page_index:
             continue
         if norm_sel in candidate.normalized:
@@ -88,7 +100,7 @@ def _diff_one(anchor: Anchor, pages: list[_PageView]) -> DiffResult:
 
     # 3. 全局 exact
     for candidate in pages:
-        if candidate.index in _window_indices(pages, anchor.page_index, PAGE_WINDOW):
+        if candidate.index in window_indices:
             continue
         if norm_sel in candidate.normalized:
             return _relocated_exact(anchor, candidate, norm_sel, rank=1)

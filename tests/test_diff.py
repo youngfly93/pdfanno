@@ -111,3 +111,43 @@ def test_diff_respects_backward_compat_exit_codes(simple_pdf: Path, tmp_path: Pa
     out = tmp_path / "o.pdf"
     r = runner.invoke(app, ["highlight", str(simple_pdf), "transformer", "-o", str(out)])
     assert r.exit_code == ExitCode.SUCCESS
+
+
+def test_diff_bad_pdf_returns_processing_error(simple_pdf: Path, tmp_path: Path) -> None:
+    """坏 PDF（非 PDF 字节）走 ExitCode.PROCESSING_ERROR=4，不是未捕获 exit 1。"""
+
+    bad = tmp_path / "not_a_pdf.pdf"
+    bad.write_text("this is not a pdf", encoding="utf-8")
+    r = runner.invoke(app, ["diff", str(bad), str(simple_pdf)])
+    assert r.exit_code == ExitCode.PROCESSING_ERROR, r.output
+
+    r2 = runner.invoke(app, ["diff", str(simple_pdf), str(bad)])
+    assert r2.exit_code == ExitCode.PROCESSING_ERROR, r2.output
+
+
+def test_diff_negative_page_window_is_usage_error(
+    pair_identical,
+) -> None:
+    v1, v2 = pair_identical
+    r = runner.invoke(app, ["diff", str(v1), str(v2), "--page-window", "-1"])
+    assert r.exit_code == ExitCode.USAGE_ERROR
+
+
+def test_page_window_is_not_module_global(pair_identical) -> None:
+    """--page-window 必须作为函数参数传递，不能改 module-level 常量。"""
+
+    from pdfanno.diff import match as match_mod
+
+    before = match_mod.DEFAULT_PAGE_WINDOW
+
+    v1, v2 = pair_identical
+    # 跑一次使用非默认值；之后 module 常量应保持不变
+    r = runner.invoke(app, ["diff", str(v1), str(v2), "--page-window", "7"])
+    assert r.exit_code == ExitCode.SUCCESS, r.output
+
+    after = match_mod.DEFAULT_PAGE_WINDOW
+    assert before == after, "--page-window 不应污染 module-level 常量"
+    # 旧代码会留 PAGE_WINDOW 属性；新代码只有 DEFAULT_PAGE_WINDOW
+    assert not hasattr(match_mod, "PAGE_WINDOW"), (
+        "match module 不应再有可变的 PAGE_WINDOW 全局；参数通过 diff_against(page_window=...) 传递"
+    )

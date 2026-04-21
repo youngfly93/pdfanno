@@ -540,7 +540,7 @@ def diff(
         None, "--diff-out", help="Write DiffReport JSON to a file instead of stdout."
     ),
     page_window: int = typer.Option(
-        3, "--page-window", help="Search window in pages around the old page index."
+        3, "--page-window", help="Search window in pages around the old page index (>= 0)."
     ),
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),
@@ -554,19 +554,26 @@ def diff(
     _require_input_exists(old_path, logger)
     _require_input_exists(new_path, logger)
 
-    # Week 1 PoC 只用 page_window 当 match 阈值输入 —— 直接改 module-level 常量不合适，
-    # 后续 Week 2 重构为 diff_against(..., page_window=...)。这里先警告不等于默认。
-    from pdfanno.diff import match as _match_mod
+    if page_window < 0:
+        logger.error("page-window must be >= 0", got=page_window)
+        raise typer.Exit(code=int(ExitCode.USAGE_ERROR))
 
-    _match_mod.PAGE_WINDOW = page_window
+    try:
+        with open_pdf(old_path) as old_doc:
+            old_doc_id = compute_doc_id(old_doc, old_path)
+            anchors = extract_anchors(old_doc, old_doc_id)
 
-    with open_pdf(old_path) as old_doc:
-        old_doc_id = compute_doc_id(old_doc, old_path)
-        anchors = extract_anchors(old_doc, old_doc_id)
-
-    with open_pdf(new_path) as new_doc:
-        new_doc_id = compute_doc_id(new_doc, new_path)
-        report = diff_against(anchors, new_doc, new_doc_id)
+        with open_pdf(new_path) as new_doc:
+            new_doc_id = compute_doc_id(new_doc, new_path)
+            report = diff_against(anchors, new_doc, new_doc_id, page_window=page_window)
+    except FileNotFoundError as exc:
+        logger.error("input file error", error=repr(exc))
+        raise typer.Exit(code=int(ExitCode.INPUT_ERROR)) from exc
+    except Exception as exc:
+        # PyMuPDF 的 FileDataError 在不同版本继承不同基类，用宽 Exception 兜底并走 exit 4
+        # （processing_error）；FileNotFoundError 已在上面分出去了。
+        logger.error("PDF processing failed", error=repr(exc))
+        raise typer.Exit(code=int(ExitCode.PROCESSING_ERROR)) from exc
 
     payload = report.model_dump(mode="json")
 

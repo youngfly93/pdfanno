@@ -40,9 +40,13 @@ DEFAULT_PAGE_WINDOW = 3
 QUAD_PROXIMITY_THRESHOLD = 15.0
 # score 下限：低于此值不进分配池，直接 broken。
 MIN_CANDIDATE_SCORE = 0.50
-# `changed` 状态阈值：text 是 fuzzy 但 context 够强才判 in-place edit。
+# `changed` 状态阈值，两档：
+#   A) text 非常高 (≥ HIGH_TEXT_CHANGED_MIN) → 认为是 in-place edit，即使 context 一般
+#   B) text 中等 (≥ CHANGED_TEXT_MIN) 且 context 强 (≥ CHANGED_CONTEXT_THRESHOLD) → 同上
+# B 档覆盖 "句子改动较大但位置没变"；A 档覆盖 "仅改个别数字/单词" 这种典型论文修订。
 CHANGED_CONTEXT_THRESHOLD = 0.70
 CHANGED_TEXT_MIN = 0.60
+HIGH_TEXT_CHANGED_MIN = 0.90
 # fuzzy 候选下限：低于此值不产生候选。保持在 0.85 避免短 token 跨句误匹配
 # （如 "keyword only appears in ..." 这种公用子串）。被 `changed` 认领需要
 # fuzzy 通过阈值后 text_sim 仍在 [CHANGED_TEXT_MIN, 1.0) 区间 —— 即 0.85 以上。
@@ -74,7 +78,12 @@ class _PageView:
 
 @dataclass(frozen=True)
 class _Candidate:
-    """anchor → 新 PDF 上的一个候选位置。"""
+    """anchor → 新 PDF 上的一个候选位置。
+
+    `window_start` 是 fuzzy 候选在 normalized page text 中的起始字符位置，用于
+    dedup —— 否则同页多条 fuzzy 候选会被 ("fuzzy", page) 当成同一个槽位互相挤掉。
+    exact 候选用 quad 中心 dedup，window_start 被忽略（默认 -1）。
+    """
 
     page_index: int
     quads: list[list[float]] = field(default_factory=list)
@@ -82,6 +91,7 @@ class _Candidate:
     text_similarity: float = 0.0
     context_similarity: float = 0.0
     page_proximity: float = 0.0
+    window_start: int = -1
 
     @property
     def score(self) -> float:
@@ -204,7 +214,10 @@ def _fuzzy_candidates(
     for pv in pages:
         if not pv.normalized:
             continue
-        m = SequenceMatcher(None, norm_sel, pv.normalized).find_longest_match(
+        # autojunk=False：对 >200 字符的 page text，SequenceMatcher 默认把高频字符标为
+        # "junk" 导致 find_longest_match 只返回 size=1。论文正文恰好触发这个陷阱，
+        # 会让一半以上的 fuzzy 候选丢失。关掉 autojunk 恢复正常行为。
+        m = SequenceMatcher(None, norm_sel, pv.normalized, autojunk=False).find_longest_match(
             0, n, 0, len(pv.normalized)
         )
         if m.size == 0:
@@ -216,7 +229,7 @@ def _fuzzy_candidates(
         window = pv.normalized[win_start:win_end]
         if not window:
             continue
-        sim = SequenceMatcher(None, norm_sel, window).ratio()
+        sim = SequenceMatcher(None, norm_sel, window, autojunk=False).ratio()
         if sim < FUZZY_THRESHOLD:
             continue
         new_before, new_after = _slice_context(pv.normalized, win_start, len(window))
@@ -228,6 +241,7 @@ def _fuzzy_candidates(
             text_similarity=sim,
             context_similarity=ctx_sim,
             page_proximity=_proximity(pv.index - anchor.page_index, page_window),
+            window_start=win_start,
         )
 
 
@@ -316,12 +330,15 @@ def _assign_one_to_one(
 
 
 def _candidate_key(cand: _Candidate) -> tuple:
-    """候选去重 key：exact 有 quads → 按中心点（四舍五入到 0.1）；fuzzy 无 quads → 按页。"""
+    """候选去重 key：exact 按 quad 中心（四舍五入到 0.1）；fuzzy 按 (page, window_start)。
+
+    fuzzy 的 window_start 是对齐后的字符偏移，保证同页多条 fuzzy 候选互不互斥。
+    """
 
     if cand.quads:
         cx, cy = _quad_center(cand.quads[0])
         return ("exact", cand.page_index, round(cx, 1), round(cy, 1))
-    return ("fuzzy", cand.page_index)
+    return ("fuzzy", cand.page_index, cand.window_start)
 
 
 # ---------- Phase 3: status classification ----------
@@ -344,13 +361,16 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
     )
 
     # Fuzzy text match —— 区分两种情形：
-    #   text 低 + context 强 → `changed`（原位置的文本被编辑）
-    #   text 低 + context 弱 → `relocated`（同 token 的不同实例 / 附近移动）
+    #   A) text 高 (≥0.90)：in-place 小编辑 → `changed`，不卡 context 阈值
+    #   B) text 中等 + context 强 → `changed`
+    #   其他 → `relocated`
     if cand.text_similarity < 1.0:
-        if (
+        high_text_edit = cand.text_similarity >= HIGH_TEXT_CHANGED_MIN
+        mid_text_with_ctx = (
             cand.text_similarity >= CHANGED_TEXT_MIN
             and cand.context_similarity >= CHANGED_CONTEXT_THRESHOLD
-        ):
+        )
+        if high_text_edit or mid_text_with_ctx:
             return DiffResult(
                 annotation_id=anchor.annotation_id,
                 status="changed",

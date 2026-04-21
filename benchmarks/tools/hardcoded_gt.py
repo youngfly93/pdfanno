@@ -50,9 +50,9 @@ def main() -> int:
     v2_doc = pymupdf.open(str(args.v2))
     labels: list[dict] = []
     for anchor in anchors:
-        title = anchor.note  # fixture 把 key 放在 title/subject；anchors.py 把 title 存到 note 里其实是 content；title 本身通过 annot.info["title"] 传入 "revised-fixture/{key}"
-        # 重新从 v1 读 annot title：extract_anchors 目前不暴露 title；只能通过 selected_text 做反查。
-        # 为方便：用 selected_text 直接映射到类别。
+        # extract_anchors 目前不暴露 annot.info["title"]（fixture 把 "revised-fixture/{key}"
+        # 写入 title）；用 selected_text 直接映射到类别。后续 Week 3 给 Anchor 加 title
+        # 字段后可以改为读 title 更直接。
         text = anchor.selected_text
         key_prefix = _classify_by_text(text)
         if key_prefix == "PRE" or key_prefix == "REL":

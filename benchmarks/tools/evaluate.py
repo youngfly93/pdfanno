@@ -139,7 +139,7 @@ def evaluate(diff: dict, gt: dict) -> dict:
 
 def render_markdown(eval_result: dict, diff_path: str, gt_path: str) -> str:
     lines: list[str] = []
-    lines.append(f"# Evaluation report\n")
+    lines.append("# Evaluation report\n")
     lines.append(f"- diff: `{diff_path}`")
     lines.append(f"- ground truth: `{gt_path}`")
     lines.append(

@@ -32,6 +32,11 @@ def extract_anchors(doc: pymupdf.Document, doc_id: str) -> list[Anchor]:
             kind = _annot_kind(annot)
             quads = _annot_quads(annot)
             selected_text = _selected_text(page, annot, kind)
+            # v0.2.1 曾尝试按 anchor 的 quad 中心定位它是 page 里第几次出现，再抽对应
+            # 位置的 ctx 窗口（"语义正确" 的做法）。实测 arXiv status 92.3→89.7%，
+            # location 56.4→48.7% —— 版本重构后 anchor 的 "真实位置" ctx 和目标位置的
+            # ctx 不再对齐。保持 v0.2.0 的 "取第一次出现 ctx" 行为反而稳。详见
+            # benchmarks/reports/week4_ctx_experiment.md。
             context_before, context_after = _context_window(page_text, selected_text)
             color = _color(annot)
             anchor_id = _local_anchor_id(doc_id, kind, page_idx, selected_text, quads)
@@ -165,11 +170,17 @@ def _selected_text(page: pymupdf.Page, annot: pymupdf.Annot, kind: str) -> str:
 
 
 def _context_window(page_text: str, selected: str) -> tuple[str, str]:
-    """在 page_text 中定位 selected，取前后 CONTEXT_CHARS 字符作上下文。"""
+    """在 page_text 中定位 selected 的第一次出现，取前后 CONTEXT_CHARS 字符作上下文。
+
+    设计取舍（v0.2.1 实验确认）：
+    - "语义正确" 的做法是按 anchor 的 quad 中心定位到第 k 次出现再抽 ctx。
+    - 实测 arXiv 反而回退（详见 week4_ctx_experiment.md）：版本重构后 anchor 真实位置
+      的 ctx 和候选位置的 ctx 不再对齐，而取 "第一次出现" 的 ctx 相对更稳定。
+    - 暂时保留这个 "首次出现" 行为，直到有信号/eval 能说明 per-anchor ctx 胜出。
+    """
 
     if not selected or not page_text:
         return "", ""
-    # 用归一化串匹配定位，但切片从原始 page_text 上取以保留可读性。
     norm_page = normalize_text(page_text)
     norm_sel = normalize_text(selected)
     if not norm_sel:
@@ -177,7 +188,6 @@ def _context_window(page_text: str, selected: str) -> tuple[str, str]:
     idx = norm_page.find(norm_sel)
     if idx < 0:
         return "", ""
-    # 归一化后的索引与原文索引不完全对应，但 300 字符窗口里的偏差可忽略。
     before = norm_page[max(0, idx - CONTEXT_CHARS) : idx]
     after = norm_page[idx + len(norm_sel) : idx + len(norm_sel) + CONTEXT_CHARS]
     return before, after

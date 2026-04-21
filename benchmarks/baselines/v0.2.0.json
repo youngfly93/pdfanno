@@ -1,0 +1,59 @@
+{
+  "version": "0.2.0",
+  "commit": "c7dabc1",
+  "captured": "2026-04-21",
+  "note": "Baseline captured before v0.2.1 context-window fix. Any v0.2.1 change must keep overall_accuracy >= baseline and ideally improve location_accuracy.",
+  "benchmarks": {
+    "arxiv_1706.03762_v1_v5": {
+      "overall_accuracy": 0.9231,
+      "location_accuracy": 0.5641,
+      "location_hits": 22,
+      "location_attempts": 39,
+      "paired": 39,
+      "failure_count": 11,
+      "per_status_f1": {
+        "preserved": 0.8235,
+        "relocated": 0.9508
+      },
+      "confusion_matrix": {
+        "relocated": {
+          "relocated": 29
+        },
+        "preserved": {
+          "preserved": 7,
+          "relocated": 3
+        }
+      }
+    },
+    "revised_synthetic": {
+      "overall_accuracy": 0.8846,
+      "location_accuracy": 1.0,
+      "location_hits": 13,
+      "location_attempts": 13,
+      "paired": 26,
+      "failure_count": 3,
+      "per_status_f1": {
+        "preserved": 0.7692,
+        "relocated": 0.7692,
+        "changed": 1.0,
+        "broken": 1.0
+      },
+      "confusion_matrix": {
+        "broken": {
+          "broken": 6
+        },
+        "relocated": {
+          "relocated": 5,
+          "preserved": 2
+        },
+        "preserved": {
+          "preserved": 5,
+          "relocated": 1
+        },
+        "changed": {
+          "changed": 7
+        }
+      }
+    }
+  }
+}

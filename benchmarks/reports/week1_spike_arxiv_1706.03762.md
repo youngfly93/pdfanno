@@ -117,3 +117,45 @@ pagination shift, no deletions". Known-true distribution:
 Diff report saved to `/tmp/pdfanno_arxiv_spike/diff.json`
 (39 entries, ~74 KB). Not committed to the repo — regenerate from the
 session fixtures as needed.
+
+---
+
+## Week 2 rerun (after H1 fixes)
+
+Algorithm rewritten per §"Hard findings" above: candidate pool, global 1:1
+greedy assignment, quad reconstruction from `search_for(..., quads=True)`,
+and quad-proximity check for `preserved`.
+
+| Metric | Week 1 PoC | Week 2 H1 |
+|---|---:|---:|
+| preserved | 24 (61%) | **11 (28%)** |
+| relocated | 15 (39%) | **28 (72%)** |
+| broken | 0 | 0 |
+| 1:1 assignment | ❌ (3× `residual connection` → same v5 position) | ✅ 39 anchors → 39 unique (page, cx, cy) |
+| `new_anchor.quads` populated | 0 / 39 | **39 / 39** |
+
+Per-query redistribution shows the algorithm now surfaces the shift for
+every query where v5 actually moved the text:
+
+| Query | Week 1 (preserved / relocated) | Week 2 (preserved / relocated) |
+|---|---|---|
+| BLEU (×11) | 8 / 3 | 6 / 5 |
+| WMT 2014 (×7) | 6 / 1 | 2 / 5 |
+| positional encoding (×5) | 1 / 4 | **0 / 5** |
+| residual connection (×3) | 0 / 3 (all → same position) | **0 / 3 (3 distinct positions)** |
+
+The `preserved` count dropping from 24 → 11 is not a regression — it's the
+algorithm no longer rubber-stamping same-page substring hits as unchanged.
+Each of the 13 downgrades corresponds to either a quad that genuinely shifted
+or a short-token false positive that has now been correctly claimed by the
+1:1 allocator for a different anchor.
+
+Still deferred (Week 2 H2-H3 and Week 3):
+
+- `context_similarity` / `layout_score` are computed as 0. Scoring only uses
+  text similarity + page proximity. Adding these will mainly help the
+  `ambiguous` / `changed` buckets once we have harsher fixtures.
+- Ground-truth labels for this 39-annotation pair so it can join the locked
+  eval set and produce honest precision/recall numbers.
+- Anchor ID still always synthesizes `anc_*`; needs to prefer existing `/NM`
+  before falling back for pdfanno-created anchors.

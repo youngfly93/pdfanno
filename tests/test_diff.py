@@ -55,12 +55,20 @@ def test_diff_reordered_produces_relocated(pair_reordered) -> None:
 
 
 def test_diff_partial_deletion_is_broken(pair_partial) -> None:
+    """v2 删除了 BetaUnique → 该 highlight 应 broken；Gamma 因为上移一行应 relocated。
+
+    Week 2 quad proximity 检查：同页同文本但位置偏移 > 15 pt 视为 relocated
+    (同一 token 的不同实例 / 或同一实例被挤到新位置)；不再糊成 preserved。
+    """
+
     v1, v2 = pair_partial
     report = _run_diff(v1, v2)
     s = report["summary"]
     assert s["total_annotations"] == 3
     assert s["broken"] == 1
-    assert s["preserved"] == 2
+    # Alpha 在首行没动 → preserved；Gamma 因 Beta 删除上移 ≈ 24 pt → relocated（同页）。
+    assert s["preserved"] == 1
+    assert s["relocated"] == 1
 
     broken = [r for r in report["results"] if r["status"] == "broken"]
     assert len(broken) == 1
@@ -68,6 +76,16 @@ def test_diff_partial_deletion_is_broken(pair_partial) -> None:
     assert broken[0]["confidence"] == 0.0
     assert broken[0]["new_anchor"] is None
     assert broken[0]["review_required"] is True
+
+    preserved = [r for r in report["results"] if r["status"] == "preserved"]
+    assert len(preserved) == 1
+    assert "AlphaUnique" in preserved[0]["old_anchor"]["selected_text"]
+
+    relocated = [r for r in report["results"] if r["status"] == "relocated"]
+    assert len(relocated) == 1
+    assert "GammaUnique" in relocated[0]["old_anchor"]["selected_text"]
+    # 同页 relocated：page_delta 为 0
+    assert relocated[0]["match_reason"]["page_delta"] == 0
 
 
 def test_diff_schema_version_is_2(pair_identical) -> None:
@@ -151,3 +169,111 @@ def test_page_window_is_not_module_global(pair_identical) -> None:
     assert not hasattr(match_mod, "PAGE_WINDOW"), (
         "match module 不应再有可变的 PAGE_WINDOW 全局；参数通过 diff_against(page_window=...) 传递"
     )
+
+
+# ----- Week 2 H1: candidate pool + 1:1 + quad 回填 -----
+
+
+def test_exact_matches_populate_new_anchor_quads(pair_reordered) -> None:
+    """exact 命中必须把 new_anchor.quads 填上（供 Week 4-5 migrate 写回 PDF）。"""
+
+    v1, v2 = pair_reordered
+    report = _run_diff(v1, v2)
+    exact_hits = [r for r in report["results"] if r["status"] in ("preserved", "relocated")]
+    assert exact_hits, "fixture should produce at least one exact hit"
+    for r in exact_hits:
+        # Week 2: exact 匹配（text_sim=1.0）必须带 quads
+        if r["match_reason"]["selected_text_similarity"] == 1.0:
+            quads = r["new_anchor"]["quads"]
+            assert quads, f"exact match must populate new_anchor.quads, got {r}"
+            assert len(quads[0]) == 8, "quad must be 8 floats (ul,ur,ll,lr * x,y)"
+
+
+def test_multi_instance_assignment_is_one_to_one(tmp_path: Path) -> None:
+    """同文本在同页出现 N 次 → N 条 v1 anchor 必须映射到 N 个不同 v2 位置。
+
+    直接触达 spike 发现的 "residual connection" bug：之前所有 3 条都指向首个命中。
+    """
+
+    import pymupdf
+
+    v1 = tmp_path / "v1.pdf"
+    v2 = tmp_path / "v2.pdf"
+
+    # v1：文本 + 三条 highlight 一次性写入（避免重开后 annot unbind 的问题）。
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), "unique_token in the first position")
+    page.insert_text((72, 130), "unique_token in the second position")
+    page.insert_text((72, 160), "unique_token in the third position")
+    for q in page.search_for("unique_token", quads=True):
+        annot = page.add_highlight_annot(q)
+        annot.update()
+    doc.save(str(v1))
+    doc.close()
+
+    # v2：文本内容相同，无注释。
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), "unique_token in the first position")
+    page.insert_text((72, 130), "unique_token in the second position")
+    page.insert_text((72, 160), "unique_token in the third position")
+    doc.save(str(v2))
+    doc.close()
+
+    report = _run_diff(v1, v2)
+    s = report["summary"]
+    assert s["total_annotations"] == 3
+
+    # 关键断言：三条 anchor 的 new_anchor 必须指向 **3 个不同的** quad 中心点。
+    centers = []
+    for r in report["results"]:
+        assert r["new_anchor"] is not None, r
+        q = r["new_anchor"]["quads"][0]
+        cx = round((q[0] + q[4]) / 2, 1)
+        cy = round((q[1] + q[5]) / 2, 1)
+        centers.append((cx, cy))
+    assert len(set(centers)) == 3, (
+        f"1:1 assignment broken: 3 anchors mapped to only {len(set(centers))} "
+        f"unique positions: {centers}"
+    )
+
+
+def test_same_page_shifted_location_is_relocated_not_preserved(tmp_path: Path) -> None:
+    """同页同文本但 quad 位置偏移 > 15 pt → 应判 relocated（不再是 preserved）。
+
+    直接触达 spike 发现的 BLEU 假阳性问题。
+    """
+
+    import pymupdf
+
+    v1 = tmp_path / "v1.pdf"
+    v2 = tmp_path / "v2.pdf"
+
+    # v1: "keyword" 在 y=100，一并标 highlight
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), "keyword appears here alone")
+    for q in page.search_for("keyword", quads=True):
+        annot = page.add_highlight_annot(q)
+        annot.update()
+    doc.save(str(v1))
+    doc.close()
+
+    # v2: "keyword" 下移到 y=300（远超 15 pt 阈值），无注释
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 50), "inserted new intro content at top")
+    page.insert_text((72, 300), "keyword appears here alone")
+    doc.save(str(v2))
+    doc.close()
+
+    report = _run_diff(v1, v2)
+    assert report["summary"]["total_annotations"] == 1
+    r = report["results"][0]
+    assert r["status"] == "relocated", (
+        f"same-page-shifted should be relocated, got {r['status']}: {r['message']}"
+    )
+    assert r["match_reason"]["page_delta"] == 0
+    # 距离应该显著大于阈值
+    assert "shifted" in r["message"].lower() or "same page" in r["message"].lower()

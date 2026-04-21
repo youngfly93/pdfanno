@@ -11,6 +11,7 @@ import hashlib
 
 import pymupdf
 
+from pdfanno.diff.sections import build_section_index, section_for
 from pdfanno.diff.types import Anchor
 from pdfanno.pdf_core.text import normalize_text
 
@@ -21,6 +22,7 @@ TEXT_COVERAGE_KINDS = {"highlight", "underline", "strikeout", "squiggly"}
 def extract_anchors(doc: pymupdf.Document, doc_id: str) -> list[Anchor]:
     """遍历 doc，对每条注释生成 Anchor。"""
 
+    section_index = build_section_index(doc)
     out: list[Anchor] = []
     for page_idx in range(doc.page_count):
         page = doc[page_idx]
@@ -33,6 +35,9 @@ def extract_anchors(doc: pymupdf.Document, doc_id: str) -> list[Anchor]:
             context_before, context_after = _context_window(page_text, selected_text)
             color = _color(annot)
             anchor_id = _local_anchor_id(doc_id, kind, page_idx, selected_text, quads)
+            # anchor 的 y 中心用于 section 定位
+            y_center = sum(quads[0][1::2]) / 4 if quads and len(quads[0]) >= 8 else 0.0
+            section = section_for(section_index, page_idx, y_center)
             out.append(
                 Anchor(
                     annotation_id=anchor_id,
@@ -51,6 +56,7 @@ def extract_anchors(doc: pymupdf.Document, doc_id: str) -> list[Anchor]:
                     note=annot.info.get("content", "") or "",
                     page_width=float(page_rect.width),
                     page_height=float(page_rect.height),
+                    section_path=section.path if section else None,
                 )
             )
     _assign_occurrence_ranks(doc, out)

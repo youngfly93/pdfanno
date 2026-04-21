@@ -44,6 +44,9 @@ class Anchor(BaseModel):
     # 配合 total_occurrences 做跨页 k-th 映射（解决短 token 的跨页错配）。
     occurrence_rank: int | None = None
     total_occurrences: int | None = None
+    # Week 3 C：所属 section 的完整路径，例如 "3 Model Architecture / 3.2 Attention"。
+    # None 表示未知（PDF 无 TOC 且字号启发失败 / 注释位于 section 之外例如 header/footer）。
+    section_path: str | None = None
 
 
 class NewAnchor(BaseModel):

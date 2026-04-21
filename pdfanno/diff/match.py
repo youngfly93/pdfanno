@@ -33,6 +33,7 @@ from difflib import SequenceMatcher
 import pymupdf
 
 from pdfanno.diff.anchors import CONTEXT_CHARS
+from pdfanno.diff.sections import SectionSpan, build_section_index, section_for
 from pdfanno.diff.types import (
     Anchor,
     DiffReport,
@@ -68,14 +69,16 @@ W_PROXIMITY = 0.10
 W_LENGTH = 0.05
 _ACTIVE_SUM = W_TEXT + W_CONTEXT + W_LAYOUT + W_PROXIMITY + W_LENGTH  # 1.00
 
-# layout_score 内部权重：同页 y/x 子分数 + 文档级 reading-order rank 子分数。
-# 当文本跨页重复出现（例如 "BLEU" × 11），rank 子分数解决跨页 k-th 映射；
-# y/x 子分数解决同页多实例定位。W_LAYOUT_RANK 比 W_LAYOUT_Y 重，因为 rank 在
-# 有重复 token 时比 y 更强地定义 "第几次"。
-W_LAYOUT_RANK = 0.60
-W_LAYOUT_Y = 0.30
-W_LAYOUT_X = 0.10
-# 缺尺寸或 rank 信息时 layout 子分数的 neutral 值。
+# layout_score 内部权重（Week 3 C 起四子分数）：
+# - section_sim: 同 section 才视作候选，是最强判别信号。
+# - rank_sim: 文档级 reading-order k-th 映射，弥补短 token 跨页歧义。
+# - y_sim: 同页多实例 y-位置定位。
+# - x_sim: 双栏版式的 column 提示；单栏几乎没信号。
+W_LAYOUT_SECTION = 0.20
+W_LAYOUT_RANK = 0.50
+W_LAYOUT_Y = 0.25
+W_LAYOUT_X = 0.05
+# 缺尺寸 / rank / section 信息时子分数的 neutral 值。
 NEUTRAL_LAYOUT = 0.5
 
 
@@ -142,12 +145,20 @@ def diff_against(
     # 为 candidate 的 rank 子分数（跨页 k-th 映射）提供全局索引。
     queries = {normalize_text(a.selected_text) for a in old_anchors if a.selected_text}
     v2_occurrences = _build_doc_occurrences(new_doc, queries)
+    # v2 section 索引，供 candidate 计算 section_sim。
+    v2_sections = build_section_index(new_doc)
 
     # Phase 1: 每条 anchor 生成候选列表。
     anchor_candidates: list[tuple[Anchor, list[_Candidate]]] = [
         (
             anchor,
-            _candidates_for(anchor, pages, page_window=page_window, v2_occurrences=v2_occurrences),
+            _candidates_for(
+                anchor,
+                pages,
+                page_window=page_window,
+                v2_occurrences=v2_occurrences,
+                v2_sections=v2_sections,
+            ),
         )
         for anchor in old_anchors
     ]
@@ -182,12 +193,14 @@ def _candidates_for(
     *,
     page_window: int,
     v2_occurrences: dict[str, list[tuple[int, float, float]]] | None = None,
+    v2_sections: list[SectionSpan] | None = None,
 ) -> list[_Candidate]:
     """枚举 anchor 在新 PDF 上的全部候选。
 
     策略：优先用 PyMuPDF `search_for` 拿到精确命中 + quads；
     若全文无 exact 命中，退而用 difflib 对每页整串 fuzzy 匹配（无 quads）。
-    `v2_occurrences` 提供 doc-level reading-order rank，用于 layout 子分数。
+    `v2_occurrences` 提供 doc-level reading-order rank，`v2_sections` 提供
+    section 标签；两者都参与 layout 子分数。
     """
 
     norm_sel = normalize_text(anchor.selected_text)
@@ -197,7 +210,12 @@ def _candidates_for(
     v2_occs_for_query = (v2_occurrences or {}).get(norm_sel, [])
     candidates = list(
         _exact_candidates(
-            anchor, pages, norm_sel, page_window=page_window, v2_occurrences=v2_occs_for_query
+            anchor,
+            pages,
+            norm_sel,
+            page_window=page_window,
+            v2_occurrences=v2_occs_for_query,
+            v2_sections=v2_sections or [],
         )
     )
     if candidates:
@@ -212,16 +230,19 @@ def _exact_candidates(
     *,
     page_window: int,
     v2_occurrences: list[tuple[int, float, float]] | None = None,
+    v2_sections: list[SectionSpan] | None = None,
 ):
     """每个 page.search_for 返回的 quad 与 normalized text 中 `norm_sel` 的出现按顺序配对，
     从而得到每个候选位置的 new context。单栏论文下顺序一致；多栏可能错位 —— Week 3 再处理。
 
     `v2_occurrences` 是 normalized query 在 v2 整个文档里按 reading-order 排好的
     (page, cy, cx) 列表，供 layout rank 子分数使用。
+    `v2_sections` 为 v2 的 section 索引，供 section_sim 子分数使用。
     """
 
     v2_occs = v2_occurrences or []
     v2_total = len(v2_occs)
+    v2_sec_list = v2_sections or []
     for pv in pages:
         quads = list(pv.page.search_for(norm_sel, quads=True) or [])
         if not quads:
@@ -233,12 +254,16 @@ def _exact_candidates(
             ctx_sim = _context_similarity(anchor, new_before, new_after)
             quad_floats = _quad_to_floats(q)
             v2_rank = _match_v2_rank(v2_occs, pv.index, quad_floats)
+            # 候选的 section —— 用 quad 中心 y 定位到 v2 的 section。
+            cy = (quad_floats[1] + quad_floats[7]) / 2
+            cand_section = section_for(v2_sec_list, pv.index, cy)
             layout = _layout_score(
                 anchor,
                 quad_floats,
                 pv.page.rect,
                 v2_rank=v2_rank,
                 v2_total=v2_total,
+                candidate_section_path=cand_section.path if cand_section else None,
             )
             yield _Candidate(
                 page_index=pv.index,
@@ -340,15 +365,27 @@ def _layout_score(
     *,
     v2_rank: int | None = None,
     v2_total: int = 0,
+    candidate_section_path: str | None = None,
 ) -> float:
-    """三个子分数加权和：reading-order rank + y-ratio + x-ratio。
+    """四个子分数加权和：section + reading-order rank + y-ratio + x-ratio。
 
-    rank: 0.60 权重。`k-th` v1 occurrence 对应 `k-th` v2 occurrence 的强信号。
-    y: 0.30 权重。同页多实例时按 y 位置锁定。
-    x: 0.10 权重。双栏版式下的 column 提示；单栏几乎没信号。
+    section: 最强判别 —— 同 section 1.0，不同 0.0，两侧都未知 1.0（无信号，不扣分），
+             只有一侧已知 neutral。
+    rank: 跨页 `k-th` 映射，对短 token 重复命中特别关键。
+    y: 同页多实例按 y 锁定。
+    x: 双栏版式 column 提示；单栏几乎没信号。
 
-    任一子分数缺信息 → 退化到 NEUTRAL_LAYOUT，其他子分数照常累加。
+    任一子分数缺信息 → 退化到 NEUTRAL_LAYOUT，不扰动其他子分数。
     """
+
+    # section 子分数：两侧都未知视为等价 —— "无信号" 是对称噪声，均匀作用于所有候选；
+    # 退 0.5 会静默惩罚每个无 TOC / 无 heading 结构的 PDF。
+    if anchor.section_path and candidate_section_path:
+        section_sim = 1.0 if anchor.section_path == candidate_section_path else 0.0
+    elif anchor.section_path is None and candidate_section_path is None:
+        section_sim = 1.0
+    else:
+        section_sim = NEUTRAL_LAYOUT
 
     # rank 子分数
     if (
@@ -384,7 +421,12 @@ def _layout_score(
         y_sim = max(0.0, 1.0 - abs(old_cy / anchor.page_height - new_cy / new_rect.height))
         x_sim = max(0.0, 1.0 - abs(old_cx / anchor.page_width - new_cx / new_rect.width))
 
-    return W_LAYOUT_RANK * rank_sim + W_LAYOUT_Y * y_sim + W_LAYOUT_X * x_sim
+    return (
+        W_LAYOUT_SECTION * section_sim
+        + W_LAYOUT_RANK * rank_sim
+        + W_LAYOUT_Y * y_sim
+        + W_LAYOUT_X * x_sim
+    )
 
 
 def _build_doc_occurrences(

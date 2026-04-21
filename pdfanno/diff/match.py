@@ -466,7 +466,17 @@ def _assign_one_to_one(
 ) -> dict[str, _Candidate]:
     """按 score 降序贪心：每个 anchor 和每个候选都只能被认领一次。
 
-    同分时以 anchor 原始顺序决定优先级 —— 保证确定性（同输入得同结果）。
+    Week 2 B 实验中我们把 `_assign_one_to_one` 换成了 Kuhn-Munkres 全局最优分配
+    （见 `pdfanno/diff/_hungarian.py`），结果 arXiv 基准 overall 92.3% → 89.7%，
+    location 56.4% → 53.8%。诊断：当前 score 不是完美 oracle，Hungarian 最大化
+    总和可能用 "0.85+0.85" 换掉真正对的 "0.92+...."，在短 token 跨页歧义下反而
+    更容易错位。Greedy 的 "先选最高分对" 隐式尊重 "高 conf ≈ 更可信" 的先验。
+
+    因此 **保留 greedy 为默认**。`_hungarian.py` 模块保留为算法基础设施，等
+    Week 3 的结构化信号（section header / figure caption）把 score 从 "good" 拉
+    到 "oracle-grade" 后再考虑切换。
+
+    同分时以 (a_idx, c_idx) 破平 —— 保证确定性。
     """
 
     indexed: list[tuple[float, int, int, str, _Candidate]] = []
@@ -474,7 +484,6 @@ def _assign_one_to_one(
         for c_idx, cand in enumerate(cands):
             if cand.score < MIN_CANDIDATE_SCORE:
                 continue
-            # 排序 key：(-score, a_idx, c_idx) 保证确定性
             indexed.append((cand.score, a_idx, c_idx, anchor.annotation_id, cand))
     indexed.sort(key=lambda t: (-t[0], t[1], t[2]))
 

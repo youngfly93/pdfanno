@@ -26,6 +26,36 @@ The reading-order rank signal is what pushed arXiv accuracy up —
 cross-page "k-th occurrence" mappings that text + context alone could
 not resolve now get the correct v2 instance.
 
+### Week 2 B: Hungarian allocator (experimental, reverted)
+
+Week 2 B tried swapping the greedy `_assign_one_to_one` for a global
+Kuhn-Munkres solver (pure-Python, `pdfanno/diff/_hungarian.py`). The
+hypothesis was that globally optimal total-score assignment would fix
+the short-token cross-page k-th mismatches still visible at greedy's
+56.4% arXiv location accuracy.
+
+**Result: regressed. arXiv overall 92.3% → 89.7%, location 56.4% →
+53.8%.** Revised fixture unchanged (100% location on both).
+
+**Diagnosis**: when the scoring function is noisy (not an oracle),
+greedy's "pick the highest-score pair first" implicitly respects the
+"high confidence ≈ more reliable" prior that correlates with individual
+correctness. Hungarian maximizes *sum*, which can prefer "0.85 + 0.85"
+over the correct "0.92 + something-else", producing a higher total but
+more individual errors. On arXiv's repeated short tokens (BLEU × 11,
+WMT 2014 × 7) this effect dominates.
+
+**Conclusion**: the bottleneck is **scoring quality**, not allocation
+strategy. Optimizing a noisy score globally cannot beat a greedy pick
+that concentrates the best-scored pairs first. Future effort should
+improve the *scoring inputs* (Week 3 C: structural signals — section
+headings, figure / table context), not the assignment algorithm.
+
+`pdfanno/diff/_hungarian.py` and its 10 unit tests are retained as
+algorithmic infrastructure — when scoring is oracle-grade the trade-off
+inverts and Hungarian may become the right choice. For now greedy is
+the committed default.
+
 Two matcher bugs were found and fixed during this evaluation pass:
 
 1. **`SequenceMatcher(autojunk=True)` corrupted fuzzy matching on long pages.**

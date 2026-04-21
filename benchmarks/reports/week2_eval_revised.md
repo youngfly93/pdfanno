@@ -1,6 +1,6 @@
 # Evaluation report
 
-- diff: `/tmp/pdfanno_revised/diff_h3b.json`
+- diff: `/tmp/pdfanno_revised/diff_final.json`
 - ground truth: `/tmp/pdfanno_revised/gt_hard.json`
 - total annotations: gt=26, diff=26, paired=26
 - **overall accuracy (status match)**: 88.5%

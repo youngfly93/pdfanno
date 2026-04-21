@@ -100,3 +100,49 @@ txt = " ".join(
 - `benchmarks/fixtures/annotate_real_pair.py` —— 给 PDF 打 highlight 的通用工具
 - `benchmarks/fixtures/build_real_pairs.py` —— 一键下载+打标+生成 gt
 - `benchmarks/baselines/v0.2.0-multi.json` —— 三 benchmark baseline 快照
+
+---
+
+## Addendum: `_selected_text` 修复（同 session 内完成）
+
+修法采用上面 "修法预览" 的混合策略 variant：
+
+```python
+def _clip_text_to_rect(page, rect):
+    raw = page.get_textbox(rect).strip()
+    if "\n" not in raw:           # 宽松版式：沿用旧的 char-level 精确 x-clip
+        return raw
+    # 紧排版 leak 触发：退到 word-level y-中心过滤
+    return _words_in_quad_rect(page, rect) or raw.replace("\n", " ")
+```
+
+第一版纯 word-level 实现让 arXiv status 92.3→85.7%、location 56.4→42.9% —— 因为
+纯 word-level 会把 "BLEU" → "BLEU,"、"residual connection" → "residual connections,"
+（word 边界整词包含标点和尾部字母），破坏了 `search_for` 的精确命中。
+
+混合策略解决了这个矛盾：
+- 旧的 char-level `get_textbox` 在宽松版式下天然返回 clean 的精确文字片段（无 \n）。
+- 仅在检测到 leak（结果含 \n）时才切到 word-level 过滤。
+- 这样 arXiv / revised / BERT 三个旧基准 Δ=0，Word2Vec / Seq2Seq 的 anchor 抽取
+  从 70% needs_review 变成 0% needs_review。
+
+## 5-benchmark baseline（`benchmarks/baselines/v0.2.1.json`）
+
+| benchmark | status | location | paired | failures |
+|---|---:|---:|---:|---:|
+| arXiv 1706.03762 v1↔v5 | 92.3% | 56.4% | 39 | 11 |
+| revised synthetic | 88.5% | 100.0% | 26 | 3 |
+| BERT 1810.04805 v1↔v2 | 100.0% | 78.6% | 14 | 0 |
+| **Word2Vec 1301.3781 v1↔v3** | **100.0%** | **100.0%** | **8** | **0** |
+| **Seq2Seq 1409.3215 v1↔v3** | **100.0%** | **100.0%** | **8** | **0** |
+
+## 对 arXiv 56.4% location 痛点的新判断
+
+之前不确定这是 "紧排版通病" 还是 "宽松版式特有"。现在 Word2Vec/Seq2Seq 紧排版论
+文以 100%/100% 跑过，而只有 arXiv 1706（宽松版式）掉链子 —— 所以 **arXiv 的痛点
+不是版式问题**，是 "Results 章节里 BLEU / WMT / Multi-Head 这种短 token 在跨页/同
+页大幅位移" 的特定模式。
+
+但我们的 Word2Vec / Seq2Seq 每篇只有 8 个 phrase，且是我挑的"干净"短语 —— 采样
+不够挑战。下一步要继续验证的话，给这两篇加 15-20 条 anchor（含多次重复的短 token
+如 "LSTM" / "CBOW" / "我们的模型"），才能真正类比 arXiv 的 39-anchor 密度。

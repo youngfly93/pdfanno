@@ -148,7 +148,21 @@ def _annot_quads(annot: pymupdf.Annot) -> list[list[float]]:
 
 
 def _selected_text(page: pymupdf.Page, annot: pymupdf.Annot, kind: str) -> str:
-    """对文本覆盖型注释，用每个 quad 反查文本再拼接；其他 kind 返回空串。"""
+    """对文本覆盖型注释，用每个 quad 反查文本再拼接；其他 kind 返回空串。
+
+    v0.2.1：混合策略。先用 `page.get_textbox(rect)` 拿 char-level 精确文本（保留旧
+    行为在宽松版式下的精细 x-clip），若结果含 `\\n`（紧排版相邻行 leak 的特征），
+    才切换到 word-level y-中心过滤：
+
+        'pared to the pre\\nneural network\\nmputational cos'
+            ↑ 触发 \\n → 切 word-level → 'neural network'
+
+    动机（详见 week5_widen_bench.md）：
+    - 单纯切 word-level 会让 BLEU → BLEU,（带标点）、residual connection →
+      residual connections，`search_for` 回流命中数会变，破坏 arXiv 1706 基线。
+    - 保留 `get_textbox` 的精细 x-clip 行为可维持已通过基准；仅在 leak 触发时退到
+      word-level。Word2Vec / Seq2Seq 的紧排版正好属于 leak 触发场景。
+    """
 
     if kind not in TEXT_COVERAGE_KINDS:
         return ""
@@ -160,13 +174,51 @@ def _selected_text(page: pymupdf.Page, annot: pymupdf.Annot, kind: str) -> str:
             xs = [float(p[0]) for p in pts]
             ys = [float(p[1]) for p in pts]
             rect = pymupdf.Rect(min(xs), min(ys), max(xs), max(ys))
-            txt = (page.get_textbox(rect) or "").strip()
+            txt = _clip_text_to_rect(page, rect)
             if txt:
                 chunks.append(txt)
         if chunks:
             return " ".join(chunks)
     # fallback: 用 annot.rect 整体取
-    return (page.get_textbox(annot.rect) or "").strip()
+    return _clip_text_to_rect(page, annot.rect)
+
+
+def _clip_text_to_rect(page: pymupdf.Page, rect: pymupdf.Rect) -> str:
+    """混合策略：先 char-level `get_textbox`；若含 `\\n` 表示跨行 leak，降级 word-level。"""
+
+    raw = (page.get_textbox(rect) or "").strip()
+    if "\n" not in raw:
+        return raw
+    filtered = _words_in_quad_rect(page, rect)
+    return filtered or raw.replace("\n", " ")
+
+
+def _words_in_quad_rect(page: pymupdf.Page, rect: pymupdf.Rect, *, y_eps: float = 1.0) -> str:
+    """只保留 word 的 y-中心落在 rect.y0 - y_eps .. rect.y1 + y_eps 之间，
+    并且 word 的 x-bbox 与 rect x-轴有重叠的词；按 reading order 拼接。
+
+    y_eps 容忍上下标 / font descenders 导致的小偏移；1pt 足够宽松版式论文，
+    同时足够严格去掉紧排版的相邻行 leak（相邻行 y-中心相距 ≥ 10pt）。
+    """
+
+    words = page.get_text("words") or []
+    y_lo = rect.y0 - y_eps
+    y_hi = rect.y1 + y_eps
+    kept: list[tuple[int, int, int, str]] = []
+    for w in words:
+        if len(w) < 8:
+            continue
+        x0, y0, x1, y1, text, block_no, line_no, word_no = w[:8]
+        cy = (y0 + y1) / 2
+        if cy < y_lo or cy > y_hi:
+            continue
+        overlap = min(x1, rect.x1) - max(x0, rect.x0)
+        if overlap <= 0:
+            continue
+        kept.append((block_no, line_no, word_no, text))
+    # PyMuPDF 的 words 已经按 (block, line, word) 排好；这里显式再排一次确保稳定。
+    kept.sort(key=lambda t: (t[0], t[1], t[2]))
+    return " ".join(t[3] for t in kept)
 
 
 def _context_window(page_text: str, selected: str) -> tuple[str, str]:

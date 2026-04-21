@@ -67,6 +67,41 @@ SPECS: list[PairSpec] = [
             "embedding",
         ],
     ),
+    PairSpec(
+        name="word2vec_1301.3781",
+        arxiv_id="1301.3781",
+        v1_version="1",
+        v2_version="3",
+        # 紧排版论文 —— 注意每条 phrase 都要在正文里能单独作为行内短语出现，
+        # 让 quad 不跨行。_selected_text 的混合策略已经修过跨行 leak，
+        # 但挑 phrase 时尽量避开包围空白太少的 token。
+        phrases=[
+            "continuous bag-of-words model",
+            "Skip-gram",
+            "vector representations of words",
+            "neural network language model",
+            "Semantic-Syntactic Word Relationship",
+            "projection layer",
+            "hierarchical softmax",
+            "large amount of data",
+        ],
+    ),
+    PairSpec(
+        name="seq2seq_1409.3215",
+        arxiv_id="1409.3215",
+        v1_version="1",
+        v2_version="3",
+        phrases=[
+            "Sequence to Sequence",
+            "Neural Network",
+            "BLEU score",
+            "Long Short-Term Memory",
+            "recurrent neural network",
+            "beam search",
+            "English to French",
+            "Deep Learning",
+        ],
+    ),
 ]
 
 

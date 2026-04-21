@@ -150,12 +150,76 @@ Each of the 13 downgrades corresponds to either a quad that genuinely shifted
 or a short-token false positive that has now been correctly claimed by the
 1:1 allocator for a different anchor.
 
-Still deferred (Week 2 H2-H3 and Week 3):
+---
 
-- `context_similarity` / `layout_score` are computed as 0. Scoring only uses
-  text similarity + page proximity. Adding these will mainly help the
-  `ambiguous` / `changed` buckets once we have harsher fixtures.
+## Week 2 H2 rerun (after context_similarity + changed status)
+
+Scoring now uses PRD §8.3 weights: 0.40 text + 0.30 context + 0.10 proximity,
+normalized by `/ 0.80` since layout (0.15) and length (0.05) are still
+deferred. `context_similarity` computed as mean of SequenceMatcher.ratio on
+±300 char before/after. `changed` status added for fuzzy-text + strong-context
+cases. Fuzzy matching switched from "longest common block / needle length" to
+"align longest block then full ratio on equal-length window" — one-digit edits
+now score ~0.98 instead of ~0.53.
+
+### Status counts unchanged
+
+| | H1 | H2 |
+|---|---:|---:|
+| preserved | 11 | 11 |
+| relocated | 28 | 28 |
+| changed | 0 | 0 |
+| broken | 0 | 0 |
+
+Expected: v5 of this paper repaginated content without in-place text edits, so
+`changed` is correctly absent. To exercise `changed`, the eval set needs a
+biorxiv-style revised-manuscript fixture.
+
+### Context discriminates what H1 could not
+
+Per-query mean `context_similarity` (sorted desc):
+
+| Query | N | mean context_sim |
+|---|---:|---:|
+| Attention Is All You Need | 1 | 1.00 |
+| Adam optimizer | 1 | 0.98 |
+| byte-pair encoding | 2 | 0.87 |
+| WMT 2014 | 7 | 0.69 |
+| label smoothing | 1 | 0.58 |
+| Multi-Head Attention | 4 | 0.51 |
+| BLEU | 11 | 0.45 |
+| Scaled Dot-Product Attention | 4 | 0.44 |
+| residual connection | 3 | 0.39 |
+| positional encoding | 5 | 0.36 |
+
+The short / frequently-repeated tokens (BLEU, residual connection, positional
+encoding) now carry honest low-ish confidence when they match mid-confidence
+candidates. Previously they all carried 0.95 regardless of whether the
+matched occurrence was "the one" from v1.
+
+### Confidence distribution is now honest
+
+Bottom-5 confidence results post-H2:
+
+- 0.604 relocated: BLEU -> p7
+- 0.610 relocated: residual connection -> p2
+- 0.611 relocated: BLEU -> p7
+- 0.625 relocated: positional encoding -> p4
+- 0.628 relocated: Multi-Head Attention -> p3
+
+These are the exact items a user should review: short tokens on pages with
+many duplicates and only weak context carryover from v1. Pre-H2 they were
+all locked at 0.95 with no signal that they might be wrong.
+
+### Still deferred (Week 2 H3 and Week 3)
+
+- `layout_score` (15% weight in PRD §8.3): relative y-position / column /
+  line-span / block-order similarity. Will help reorder candidates that tie
+  on text+context.
+- `length_similarity` (5% weight).
 - Ground-truth labels for this 39-annotation pair so it can join the locked
-  eval set and produce honest precision/recall numbers.
-- Anchor ID still always synthesizes `anc_*`; needs to prefer existing `/NM`
-  before falling back for pdfanno-created anchors.
+  eval set and produce honest precision/recall numbers per PRD §9.2.
+- Anchor ID still always synthesizes `anc_*`; should prefer existing `/NM`
+  before falling back for pdfanno-created anchors (finding #4 from Week 1
+  spike, unchanged).
+- Biorxiv revised-manuscript fixture to exercise `changed` / `ambiguous`.

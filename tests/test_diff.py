@@ -239,6 +239,117 @@ def test_multi_instance_assignment_is_one_to_one(tmp_path: Path) -> None:
     )
 
 
+def test_context_similarity_discriminates_same_token_occurrences(tmp_path: Path) -> None:
+    """同 token 在 v2 多页出现时，context 相近那一条应拿更高 confidence。
+
+    验证 context_similarity 被正确计入 score：
+    - v1: "widget" 在 "the widget is red" 句中，page 0。
+    - v2: "widget" 在 page 0 有 "the widget is red"（真正原位置）+ page 2 有无关
+      上下文的 "widget" 孤词。两条候选 text_similarity 都是 1.0，但 context
+      差异显著 —— anchor 应配到 page 0（context 相似的那条）。
+    """
+
+    import pymupdf
+
+    v1 = tmp_path / "v1.pdf"
+    v2 = tmp_path / "v2.pdf"
+
+    # v1: 单页，"the widget is red"，高亮 "widget"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), "intro text before the widget")
+    page.insert_text((72, 130), "the widget is red and works well")
+    page.insert_text((72, 160), "more text after the widget for context")
+    for q in page.search_for("widget", quads=True)[:1]:
+        annot = page.add_highlight_annot(q)
+        annot.update()
+    doc.save(str(v1))
+    doc.close()
+
+    # v2: page 0 保留 "the widget is red"（原 context）；page 2 有完全无关上下文的 widget。
+    doc = pymupdf.open()
+    p0 = doc.new_page(width=595, height=842)
+    p0.insert_text((72, 100), "intro text before the widget")
+    p0.insert_text((72, 130), "the widget is red and works well")
+    p0.insert_text((72, 160), "more text after the widget for context")
+    doc.new_page(width=595, height=842)  # 空 page 1
+    p2 = doc.new_page(width=595, height=842)
+    p2.insert_text((72, 100), "unrelated page about lasers and rockets")
+    p2.insert_text((72, 130), "another widget appears in alien context")
+    p2.insert_text((72, 160), "nothing about the original intro or red colors")
+    doc.save(str(v2))
+    doc.close()
+
+    report = _run_diff(v1, v2)
+    assert report["summary"]["total_annotations"] >= 1
+    r = report["results"][0]
+    # 应该配到 page 0 而不是 page 2（因为 context 更匹配）
+    assert r["new_anchor"]["page_index"] == 0, (
+        f"context_similarity 应该把 anchor 拉回 page 0，实际到了 p{r['new_anchor']['page_index']}"
+    )
+    # context_similarity 真的被填了，不是 0
+    assert r["match_reason"]["context_similarity"] > 0.0
+
+
+def test_changed_status_for_edited_in_place_text(tmp_path: Path) -> None:
+    """同位置的文本被编辑 → fuzzy text + 强 context → 应判 changed 而非 relocated。
+
+    v1: "The kinase activity was measured at 37 degrees."
+    v2: 同 page 同位置，句子改成 "The kinase activity was measured at 42 degrees."
+    anchor 选中原句子（包括 37）。
+    """
+
+    import pymupdf
+
+    v1 = tmp_path / "v1.pdf"
+    v2 = tmp_path / "v2.pdf"
+
+    # 长句让单字符编辑后 text_similarity 仍在 ≥ 0.85 的 fuzzy 候选区间。
+    old_sentence = (
+        "The kinase activity was carefully measured at 37 degrees Celsius "
+        "under sterile conditions in triplicate."
+    )
+    new_sentence = (
+        "The kinase activity was carefully measured at 42 degrees Celsius "
+        "under sterile conditions in triplicate."
+    )
+
+    # v1
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 80), "Before the experiment we prepared buffer.")
+    page.insert_text((72, 110), old_sentence)
+    page.insert_text((72, 140), "After the reaction we quantified product.")
+    for q in page.search_for(old_sentence, quads=True):
+        annot = page.add_highlight_annot(q)
+        annot.update()
+    doc.save(str(v1))
+    doc.close()
+
+    # v2
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 80), "Before the experiment we prepared buffer.")
+    page.insert_text((72, 110), new_sentence)
+    page.insert_text((72, 140), "After the reaction we quantified product.")
+    doc.save(str(v2))
+    doc.close()
+
+    report = _run_diff(v1, v2)
+    assert report["summary"]["total_annotations"] == 1
+    r = report["results"][0]
+    assert r["status"] == "changed", (
+        f"text 改动+context 不变 应判 changed, 实际 {r['status']}: {r['message']}"
+    )
+    assert r["review_required"] is True
+    # text_sim 应在 [0.60, 1.0)
+    ts = r["match_reason"]["selected_text_similarity"]
+    assert 0.60 <= ts < 1.0, f"text_similarity 不在 fuzzy 段: {ts}"
+    # context_sim 应 >= 0.70 阈值
+    cs = r["match_reason"]["context_similarity"]
+    assert cs >= 0.70, f"context 应该高，实际 {cs}"
+
+
 def test_same_page_shifted_location_is_relocated_not_preserved(tmp_path: Path) -> None:
     """同页同文本但 quad 位置偏移 > 15 pt → 应判 relocated（不再是 preserved）。
 

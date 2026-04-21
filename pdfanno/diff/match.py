@@ -1,17 +1,20 @@
-"""把旧 Anchor 映射到新 PDF 的位置 —— PRD §8.3，Week 2 重构版。
+"""把旧 Anchor 映射到新 PDF 的位置 —— PRD §8.3。
 
-相对 Week 1 PoC 的改动（见 benchmarks/reports/week1_spike_arxiv_1706.03762.md）：
+Week 2 H1 (candidate pool + 1:1 + quad reconstruction):
+- 生成**所有候选**，不只取第一个。
+- **全局贪心 1:1 分配**：按 `score` 降序配对，每个候选只被认领一次。
+- `new_anchor.quads` 用 `search_for(..., quads=True)` 回填。
+- `preserved` 要求新 quad 中心距旧 quad 中心 < QUAD_PROXIMITY_THRESHOLD。
 
-- 生成**所有候选**，不只取第一个（candidate pool）。
-- **全局贪心 1:1 分配**：按 `score` 降序配对，每个候选只能被认领一次。
-  避免 "同页 3 条同文本 anchor 都指向 v5 同一位置" 的 bug。
-- `new_anchor.quads` 用 PyMuPDF `search_for(..., quads=True)` 回填，
-  为 Week 4-5 migrate 写回 PDF 铺路。
-- `preserved` 不再只看 "同页有 substring"：要求新 quad 中心到旧 quad 中心距离
-  小于 `QUAD_PROXIMITY_THRESHOLD`（默认 15 PDF pt ≈ 一行）；否则降级 `relocated`。
-  解决 spike 发现的 BLEU 短 token 假阳性。
+Week 2 H2 (context_similarity + changed 状态):
+- `context_similarity` 用 SequenceMatcher 比对旧 anchor 的 ±300 字 context 与
+  新位置的 ±300 字 context。归一化后参与打分。
+- 打分公式对齐 PRD §8.3 的 text(0.40) / context(0.30) / proximity(0.10)。
+  layout(0.15) / length(0.05) 尚未实现，由归一化 `/ ACTIVE_SUM` 补偿。
+- 新状态 `changed`：fuzzy text (≥0.60 且 <1.0) 但 context 强 (≥0.70) →
+  原位置文本被编辑，review_required=True。
 
-Week 2+ 继续补齐：context_similarity / layout_score / changed / ambiguous。
+Week 2+ 继续补齐：layout_score / ambiguous / unsupported。
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ from difflib import SequenceMatcher
 
 import pymupdf
 
+from pdfanno.diff.anchors import CONTEXT_CHARS
 from pdfanno.diff.types import (
     Anchor,
     DiffReport,
@@ -32,15 +36,26 @@ from pdfanno.diff.types import (
 from pdfanno.pdf_core.text import normalize_text
 
 DEFAULT_PAGE_WINDOW = 3
-FUZZY_THRESHOLD = 0.85
 # 同页 quad 中心距离（PDF pt）以内视为"同一位置" —— 约一行行高。
 QUAD_PROXIMITY_THRESHOLD = 15.0
 # score 下限：低于此值不进分配池，直接 broken。
 MIN_CANDIDATE_SCORE = 0.50
+# `changed` 状态阈值：text 是 fuzzy 但 context 够强才判 in-place edit。
+CHANGED_CONTEXT_THRESHOLD = 0.70
+CHANGED_TEXT_MIN = 0.60
+# fuzzy 候选下限：低于此值不产生候选。保持在 0.85 避免短 token 跨句误匹配
+# （如 "keyword only appears in ..." 这种公用子串）。被 `changed` 认领需要
+# fuzzy 通过阈值后 text_sim 仍在 [CHANGED_TEXT_MIN, 1.0) 区间 —— 即 0.85 以上。
+FUZZY_THRESHOLD = 0.85
 
-# 打分权重（Week 2 初版；Week 3 会在 dev set 上校准）。
-W_TEXT = 0.85
-W_PROXIMITY = 0.15
+# 打分权重 —— 对齐 PRD §8.3。Week 2 H2 实装 text/context/proximity；
+# layout(0.15) / length(0.05) 尚未实现，保持 0 并用 ACTIVE_SUM 归一化。
+W_TEXT = 0.40
+W_CONTEXT = 0.30
+W_PROXIMITY = 0.10
+W_LAYOUT = 0.0  # Week 2 H3 / Week 3
+W_LENGTH = 0.0  # Week 2 H3 / Week 3
+_ACTIVE_SUM = W_TEXT + W_CONTEXT + W_PROXIMITY  # 0.80
 
 
 @dataclass(frozen=True)
@@ -65,11 +80,17 @@ class _Candidate:
     quads: list[list[float]] = field(default_factory=list)
     matched_text: str = ""
     text_similarity: float = 0.0
+    context_similarity: float = 0.0
     page_proximity: float = 0.0
 
     @property
     def score(self) -> float:
-        return W_TEXT * self.text_similarity + W_PROXIMITY * self.page_proximity
+        raw = (
+            W_TEXT * self.text_similarity
+            + W_CONTEXT * self.context_similarity
+            + W_PROXIMITY * self.page_proximity
+        )
+        return raw / _ACTIVE_SUM if _ACTIVE_SUM else 0.0
 
 
 def diff_against(
@@ -141,13 +162,24 @@ def _exact_candidates(
     *,
     page_window: int,
 ):
+    """每个 page.search_for 返回的 quad 与 normalized text 中 `norm_sel` 的出现按顺序配对，
+    从而得到每个候选位置的 new context。单栏论文下顺序一致；多栏可能错位 —— Week 3 再处理。"""
+
     for pv in pages:
-        for q in pv.page.search_for(norm_sel, quads=True) or []:
+        quads = list(pv.page.search_for(norm_sel, quads=True) or [])
+        if not quads:
+            continue
+        text_positions = _all_find(pv.normalized, norm_sel)
+        for q_idx, q in enumerate(quads):
+            text_idx = text_positions[q_idx] if q_idx < len(text_positions) else -1
+            new_before, new_after = _slice_context(pv.normalized, text_idx, len(norm_sel))
+            ctx_sim = _context_similarity(anchor, new_before, new_after)
             yield _Candidate(
                 page_index=pv.index,
                 quads=[_quad_to_floats(q)],
                 matched_text=norm_sel,
                 text_similarity=1.0,
+                context_similarity=ctx_sim,
                 page_proximity=_proximity(pv.index - anchor.page_index, page_window),
             )
 
@@ -159,23 +191,87 @@ def _fuzzy_candidates(
     *,
     page_window: int,
 ):
-    needle_len = max(len(norm_sel), 1)
+    """每页用最长公共子串定位 + 等长窗口对齐，再算 SequenceMatcher.ratio()。
+
+    为什么不直接用 `find_longest_match.size / len(needle)`：单字符中间编辑
+    会把 LCS 拦腰斩成两块 —— ratio 会被低估为 ~0.5。对齐窗口后的 full ratio
+    能正确给出 ~0.98 这种 "差一个数字" 的真实相似度。
+    """
+
+    n = len(norm_sel)
+    if n == 0:
+        return
     for pv in pages:
-        match = SequenceMatcher(None, norm_sel, pv.normalized).find_longest_match(
-            0, len(norm_sel), 0, len(pv.normalized)
-        )
-        if match.size == 0:
+        if not pv.normalized:
             continue
-        sim = match.size / needle_len
+        m = SequenceMatcher(None, norm_sel, pv.normalized).find_longest_match(
+            0, n, 0, len(pv.normalized)
+        )
+        if m.size == 0:
+            continue
+        # 把 needle 的最长匹配块 [m.a..m.a+m.size] 对齐到 page 的 [m.b..m.b+m.size]；
+        # 即以此为锚将 needle 整体覆盖到 page 上，截出等长窗口做 full ratio。
+        win_start = max(0, m.b - m.a)
+        win_end = min(len(pv.normalized), win_start + n)
+        window = pv.normalized[win_start:win_end]
+        if not window:
+            continue
+        sim = SequenceMatcher(None, norm_sel, window).ratio()
         if sim < FUZZY_THRESHOLD:
             continue
+        new_before, new_after = _slice_context(pv.normalized, win_start, len(window))
+        ctx_sim = _context_similarity(anchor, new_before, new_after)
         yield _Candidate(
             page_index=pv.index,
             quads=[],
-            matched_text=norm_sel,
+            matched_text=window,
             text_similarity=sim,
+            context_similarity=ctx_sim,
             page_proximity=_proximity(pv.index - anchor.page_index, page_window),
         )
+
+
+def _all_find(haystack: str, needle: str) -> list[int]:
+    """返回 needle 在 haystack 中所有出现位置，按顺序。"""
+
+    positions: list[int] = []
+    if not needle:
+        return positions
+    start = 0
+    while True:
+        idx = haystack.find(needle, start)
+        if idx < 0:
+            return positions
+        positions.append(idx)
+        start = idx + 1  # 允许重叠以应对极短 token
+
+
+def _slice_context(text: str, hit_idx: int, hit_len: int) -> tuple[str, str]:
+    """从 normalized text 切 hit_idx 前后各 CONTEXT_CHARS 字符。hit_idx<0 退化为空。"""
+
+    if hit_idx < 0:
+        return "", ""
+    before = text[max(0, hit_idx - CONTEXT_CHARS) : hit_idx]
+    end = hit_idx + hit_len
+    after = text[end : end + CONTEXT_CHARS]
+    return before, after
+
+
+def _context_similarity(anchor: Anchor, new_before: str, new_after: str) -> float:
+    """旧 anchor 的 ±context 与新位置 ±context 的 SequenceMatcher ratio 平均。
+
+    若 anchor 两侧 context 都为空 —— 例如选中文本正好在页首或页尾 —— 返回 0.0
+    （context 无信号，不参与加分也不减分，因为 W_CONTEXT 对双方都是零贡献）。
+    """
+
+    parts: list[float] = []
+    if anchor.context_before:
+        parts.append(SequenceMatcher(None, anchor.context_before, new_before).ratio())
+    if anchor.context_after:
+        parts.append(SequenceMatcher(None, anchor.context_after, new_after).ratio())
+    if not parts:
+        return 0.0
+    return sum(parts) / len(parts)
 
 
 def _proximity(page_delta: int, page_window: int) -> float:
@@ -232,27 +328,53 @@ def _candidate_key(cand: _Candidate) -> tuple:
 
 
 def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
-    """按 anchor + 已分配的 candidate 判 preserved / relocated / （未来）changed。"""
+    """按 anchor + 已分配的 candidate 判 preserved / relocated / changed。"""
 
     page_delta = cand.page_index - anchor.page_index
+    reason = MatchReason(
+        selected_text_similarity=round(cand.text_similarity, 3),
+        context_similarity=round(cand.context_similarity, 3),
+        page_delta=page_delta,
+        candidate_rank=1,
+    )
+    new_anchor = NewAnchor(
+        page_index=cand.page_index,
+        quads=cand.quads,
+        matched_text=cand.matched_text,
+    )
 
-    # 非完全匹配的 fuzzy 候选 → relocated，置信度取 text_similarity。
+    # Fuzzy text match —— 区分两种情形：
+    #   text 低 + context 强 → `changed`（原位置的文本被编辑）
+    #   text 低 + context 弱 → `relocated`（同 token 的不同实例 / 附近移动）
     if cand.text_similarity < 1.0:
+        if (
+            cand.text_similarity >= CHANGED_TEXT_MIN
+            and cand.context_similarity >= CHANGED_CONTEXT_THRESHOLD
+        ):
+            return DiffResult(
+                annotation_id=anchor.annotation_id,
+                status="changed",
+                confidence=round(cand.score, 3),
+                old_anchor=anchor,
+                new_anchor=new_anchor,
+                match_reason=reason,
+                review_required=True,
+                message=(
+                    f"Text edited in place on page {cand.page_index} "
+                    f"(text_sim={cand.text_similarity:.2f}, ctx_sim={cand.context_similarity:.2f})."
+                ),
+            )
         return DiffResult(
             annotation_id=anchor.annotation_id,
             status="relocated",
-            confidence=round(cand.text_similarity, 3),
+            confidence=round(cand.score, 3),
             old_anchor=anchor,
-            new_anchor=NewAnchor(
-                page_index=cand.page_index, quads=cand.quads, matched_text=cand.matched_text
-            ),
-            match_reason=MatchReason(
-                selected_text_similarity=round(cand.text_similarity, 3),
-                page_delta=page_delta,
-                candidate_rank=1,
-            ),
+            new_anchor=new_anchor,
+            match_reason=reason,
             review_required=cand.text_similarity < 0.90,
-            message=f"Fuzzy match on page {cand.page_index} (score={cand.text_similarity:.2f}).",
+            message=(
+                f"Fuzzy match on page {cand.page_index} (text_sim={cand.text_similarity:.2f})."
+            ),
         )
 
     # 以下都是 exact text 命中（quads 非空）。
@@ -260,54 +382,35 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
         return DiffResult(
             annotation_id=anchor.annotation_id,
             status="relocated",
-            confidence=0.95,
+            confidence=round(cand.score, 3),
             old_anchor=anchor,
-            new_anchor=NewAnchor(
-                page_index=cand.page_index, quads=cand.quads, matched_text=cand.matched_text
-            ),
-            match_reason=MatchReason(
-                selected_text_similarity=1.0,
-                page_delta=page_delta,
-                candidate_rank=1,
-            ),
+            new_anchor=new_anchor,
+            match_reason=reason,
             review_required=False,
             message=f"Exact match on page {cand.page_index} (was {anchor.page_index}).",
         )
 
-    # 同页同文本：quad 近邻检查 —— 解决短 token 假阳性。
+    # 同页 exact：quad 近邻 → preserved；偏离 → 同页 relocated。
     if _quads_nearby(anchor.quads, cand.quads, threshold=QUAD_PROXIMITY_THRESHOLD):
         return DiffResult(
             annotation_id=anchor.annotation_id,
             status="preserved",
-            confidence=1.0,
+            confidence=round(max(cand.score, 1.0), 3),
             old_anchor=anchor,
-            new_anchor=NewAnchor(
-                page_index=cand.page_index, quads=cand.quads, matched_text=cand.matched_text
-            ),
-            match_reason=MatchReason(
-                selected_text_similarity=1.0,
-                page_delta=0,
-                candidate_rank=1,
-            ),
+            new_anchor=new_anchor,
+            match_reason=reason,
             review_required=False,
             message=f"Exact match at same location on page {cand.page_index}.",
         )
 
-    # 同页但 quad 明显偏离 → 同页不同位置（可能是同 token 的另一个实例）。
     distance = _quad_distance(anchor.quads, cand.quads)
     return DiffResult(
         annotation_id=anchor.annotation_id,
         status="relocated",
-        confidence=0.90,
+        confidence=round(cand.score, 3),
         old_anchor=anchor,
-        new_anchor=NewAnchor(
-            page_index=cand.page_index, quads=cand.quads, matched_text=cand.matched_text
-        ),
-        match_reason=MatchReason(
-            selected_text_similarity=1.0,
-            page_delta=0,
-            candidate_rank=1,
-        ),
+        new_anchor=new_anchor,
+        match_reason=reason,
         review_required=False,
         message=(
             f"Same page, shifted location "

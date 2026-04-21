@@ -3,6 +3,56 @@
 All notable changes to `pdfanno` are documented here. Versioning follows
 [Semantic Versioning](https://semver.org/) and dates are ISO-8601.
 
+## [0.2.0] — 2026-04-21
+
+`pdfanno diff` shipped — Week 1 PoC through Week 3 section-aware scoring.
+Migrate annotations between two PDF versions with explicit status
+(`preserved` / `relocated` / `changed` / `broken`) and stable per-anchor
+identity across the migration.
+
+### Added
+
+- **`pdfanno diff OLD.pdf NEW.pdf`** — produces a `DiffReport` with one
+  `DiffResult` per old anchor, including its best-match new position
+  (quads), status, confidence, and per-signal reasoning.
+- `--json` / `--diff-out FILE` / `--page-window N` flags.
+- Anchor model in `pdfanno/diff/types.py` with frozen identity fields
+  and per-anchor `occurrence_rank` / `total_occurrences` / `section_path`.
+- `pdfanno/diff/match.py` — 5-signal scorer: text (0.40), context (0.30),
+  layout (0.15, further decomposed into section / rank / y / x), page
+  proximity (0.10), length (0.05). Greedy 1:1 assignment after Hungarian
+  allocator regressed the baseline and was reverted (see
+  `pdfanno/diff/_hungarian.py` docstring).
+- `pdfanno/diff/sections.py` — section detection via `doc.get_toc()` then
+  font-size heuristic; `SectionSpan.path` carries ancestor chain.
+
+### Benchmarks (see `benchmarks/reports/`)
+
+- **arXiv 1706.03762 v1→v5**: 92.3% status accuracy / 56.4% location
+  accuracy (same-page 15pt threshold). 11 failure cases are cross-page
+  / large-shift short-token repeats (BLEU, WMT, Multi-Head Attention).
+- **Synthetic revised manuscript**: 88.5% status / 100% location across
+  26 preserved / relocated / changed / broken cases.
+
+### Experimental
+
+- **`section_sim` is experimental in v0.2.0.** The signal is wired into
+  `layout_score` (weight 0.20, see `match.W_LAYOUT_SECTION`) and verified
+  directionally correct by `tests/test_cross_section.py`, but no
+  benchmark in this release demonstrates end-to-end decision-flipping on
+  cross-section short-token ambiguity. `_context_window` extracts the
+  anchor's context from the first match position rather than the anchor's
+  own position, which introduces ctx asymmetry that section_sim can't
+  overcome at current weights. Fix + judicial test land in v0.2.1.
+  Toggle off with `PDFANNO_DISABLE_SECTION_SIM=1` if needed.
+
+### Deferred
+
+- Large same-page shifts on repeated short tokens (the dominant arXiv
+  failure class) → Week 4 / v0.2.1.
+- Semantic (embedding-based) similarity → later; blocked on
+  deps/speed/reproducibility analysis.
+
 ## [0.1.0] — 2026-04-21
 
 First public release. CLI is feature-complete for plan.md Phase 0 + Phase 1;
@@ -45,15 +95,6 @@ TUI (Phase 2) and image rendering (Phase 3) remain out of scope.
 - Sidecar sync stays conservative: `import` captures external annotations
   as read-only sidecar rows; no automatic merge when the underlying PDF is
   modified elsewhere (plan.md §9).
-- **`section_sim` is experimental in v0.2.0.** The signal is wired into
-  `layout_score` (weight 0.20, see `match.W_LAYOUT_SECTION`) and verified
-  directionally correct by `tests/test_cross_section.py`, but no
-  benchmark in this release demonstrates end-to-end decision-flipping on
-  cross-section short-token ambiguity. `_context_window` extracts the
-  anchor's context from the first match position rather than the anchor's
-  own position, which introduces ctx asymmetry that section_sim can't
-  overcome at current weights. Fix + judicial test land in v0.2.1.
-  Toggle off with `PDFANNO_DISABLE_SECTION_SIM=1` if needed.
 
 ### Dependencies
 

@@ -100,6 +100,41 @@ BROKEN_CTX_FLOOR = 0.0
 _BROKEN_FLOOR_ENV_OFF = "PDFANNO_DISABLE_BROKEN_FLOOR"
 _BROKEN_FLOOR_ENV_VAL = "PDFANNO_BROKEN_CTX_FLOOR"
 
+# Week 11 "ctx-aware assignment preemption"：在 1:1 greedy 分配时，若候选 slot 已被
+# 同 normalized selected_text 的另一 anchor 占用，score 差在 epsilon 内，且当前
+# anchor 的 context_similarity 显著更高（≥ MIN_CTX_ADVANTAGE），允许抢占；被抢占
+# 的 anchor 退到自己的下一个未占用候选。
+#
+# 动机（week10_ctx_mode.md）：arXiv 失败里 `anc_bc48e155 Scaled-Dot-Product` own_ctx
+# = 0.576 本身不差，但 greedy 阶段被另一同 token anchor 抢走 slot，只能退到 ctx=
+# 0.07 次优。broken floor 单靠度量解不了这个"被抢"问题，必须进到分配层。
+#
+# **默认关闭** —— `PDFANNO_CTX_AWARE_ASSIGN=1` 显式启用。`PDFANNO_CTX_ASSIGN_EPSILON`
+# / `PDFANNO_CTX_ASSIGN_MIN_ADVANTAGE` 运行时覆盖阈值。只在 same-token 组内生效，
+# 不跨 token、不做 Hungarian、不比较不同 text 的 score 总和 —— 那条路 Week 2 B
+# 和 Week 7 已证伪两次。
+_CTX_ASSIGN_ENV_ON = "PDFANNO_CTX_AWARE_ASSIGN"
+_CTX_ASSIGN_EPSILON_ENV = "PDFANNO_CTX_ASSIGN_EPSILON"
+_CTX_ASSIGN_MIN_ADVANTAGE_ENV = "PDFANNO_CTX_ASSIGN_MIN_ADVANTAGE"
+CTX_ASSIGN_EPSILON = 0.05
+CTX_ASSIGN_MIN_ADVANTAGE = 0.10
+
+
+def _ctx_aware_assign_params() -> tuple[float, float] | None:
+    """返回 (epsilon, min_advantage)；None 表示关闭（默认）。"""
+
+    if os.environ.get(_CTX_ASSIGN_ENV_ON) != "1":
+        return None
+    try:
+        eps = float(os.environ.get(_CTX_ASSIGN_EPSILON_ENV, CTX_ASSIGN_EPSILON))
+    except ValueError:
+        eps = CTX_ASSIGN_EPSILON
+    try:
+        adv = float(os.environ.get(_CTX_ASSIGN_MIN_ADVANTAGE_ENV, CTX_ASSIGN_MIN_ADVANTAGE))
+    except ValueError:
+        adv = CTX_ASSIGN_MIN_ADVANTAGE
+    return eps, adv
+
 
 def _active_broken_floor() -> float | None:
     """返回当前生效的 ctx floor；None 表示关闭。"""
@@ -549,13 +584,19 @@ def _assign_one_to_one(
     历史上尝试过换非 greedy（全部 revert 回 greedy）：
     - Week 2 B：**全局** Kuhn-Munkres → arXiv 92.3→89.7 / 56.4→53.8。
     - Week 7：**同 token 组内** Hungarian → arXiv 同样 92.3→89.7 / 56.4→53.8，
-      Word2Vec 压力集数字没动（85.7%/57.1%）。和 Week 2 B 被同一条
-      `anc_68ab8fb0 Multi-Head Attention` 案例翻掉 —— 这条案例稳定证伪任何
-      "加强 same-token 组内 sum-max" 思路。详见 `benchmarks/reports/week7_group_assign.md`。
+      Word2Vec 压力集数字没动。`anc_68ab8fb0 Multi-Head Attention` 稳定证伪任何
+      "加强 same-token 组内 sum-max" 思路。详见 `week7_group_assign.md`。
 
-    **结论**：在打分还不是 oracle 级之前，greedy 的 "先选最高分对" 隐式先验
-    （"高 conf ≈ 更可信"）比 Hungarian 的 sum-max 健壮。`_hungarian.py` 保留为
-    算法基础设施，未来信号层精度提升后再考虑切换。
+    **结论**：greedy 的 "先选最高分对" 先验比 Hungarian sum-max 健壮。
+
+    Week 11 加了一个 **可选的 same-token ctx-aware preemption 层**（默认关闭）：
+    candidate slot 已被同 token 另一 anchor 占用，且 score 差 ≤ epsilon，
+    且 contender 的 ctx 比 holder 高 ≥ MIN_CTX_ADVANTAGE 时，允许抢占。
+    被抢的 anchor 退到自己的下一个未占用候选。解决 arXiv `anc_bc48e155` 这类
+    "own ctx 不差但被 greedy 早期抢走 slot，只能退到 ctx 近 0 的次优" 失败。
+
+    启用：`PDFANNO_CTX_AWARE_ASSIGN=1`（与 `PDFANNO_CTX_SIM_MODE=concat` 配合
+    使用效果最好，因为 concat mode 下 ctx 数值和 oracle 对齐）。
 
     同分时以 (a_idx, c_idx) 破平 —— 保证确定性。
     """
@@ -568,16 +609,68 @@ def _assign_one_to_one(
             indexed.append((cand.score, a_idx, c_idx, anchor.annotation_id, cand))
     indexed.sort(key=lambda t: (-t[0], t[1], t[2]))
 
+    ctx_params = _ctx_aware_assign_params()  # None = disabled
+
     assignments: dict[str, _Candidate] = {}
-    used: set[tuple] = set()
-    for _score, _ai, _ci, aid, cand in indexed:
+    used: dict[tuple, tuple[str, float, _Candidate]] = {}
+    displaced: list[str] = []  # anchors whose slot got preempted; retry at end
+
+    # 预计算 aid → anchor 以便查 normalize_text；另外 aid → sorted cands 以便退位。
+    aid_to_anchor: dict[str, Anchor] = {a.annotation_id: a for a, _ in anchor_candidates}
+    aid_to_cands: dict[str, list[_Candidate]] = {
+        a.annotation_id: cands for a, cands in anchor_candidates
+    }
+
+    for score, _ai, _ci, aid, cand in indexed:
         if aid in assignments:
             continue
-        key = _candidate_key(cand)
-        if key in used:
+        slot = _candidate_key(cand)
+        holder = used.get(slot)
+        if holder is None:
+            assignments[aid] = cand
+            used[slot] = (aid, score, cand)
             continue
+
+        # slot 已占。默认 greedy：skip。Week 11：仅在开关打开 + 同 token + score 近
+        # + ctx 显著更高时抢占。
+        if ctx_params is None:
+            continue
+        epsilon, min_advantage = ctx_params
+        holder_aid, holder_score, holder_cand = holder
+        if holder_aid == aid:
+            continue  # 防御性 —— 不应发生
+        holder_anchor = aid_to_anchor.get(holder_aid)
+        contender_anchor = aid_to_anchor.get(aid)
+        if holder_anchor is None or contender_anchor is None:
+            continue
+        if normalize_text(holder_anchor.selected_text) != normalize_text(
+            contender_anchor.selected_text
+        ):
+            continue  # 跨 token 禁止抢占
+        if holder_score - score > epsilon:
+            continue  # holder 的 score 明显更高，不翻案
+        if cand.context_similarity - holder_cand.context_similarity < min_advantage:
+            continue  # contender 的 ctx 优势不够
+        # 抢占！
+        assignments.pop(holder_aid, None)
+        displaced.append(holder_aid)
         assignments[aid] = cand
-        used.add(key)
+        used[slot] = (aid, score, cand)
+
+    # 为被抢占的 anchor 找次优未占用候选。按本 anchor 的 score desc 扫一遍。
+    for aid in displaced:
+        if aid in assignments:
+            continue  # 被后续抢占链条重新赋值，不用再找
+        for c in sorted(aid_to_cands.get(aid, []), key=lambda x: -x.score):
+            if c.score < MIN_CANDIDATE_SCORE:
+                break
+            slot = _candidate_key(c)
+            if slot in used:
+                continue
+            assignments[aid] = c
+            used[slot] = (aid, c.score, c)
+            break
+
     return assignments
 
 

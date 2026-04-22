@@ -522,15 +522,16 @@ def _assign_one_to_one(
 ) -> dict[str, _Candidate]:
     """按 score 降序贪心：每个 anchor 和每个候选都只能被认领一次。
 
-    Week 2 B 实验中我们把 `_assign_one_to_one` 换成了 Kuhn-Munkres 全局最优分配
-    （见 `pdfanno/diff/_hungarian.py`），结果 arXiv 基准 overall 92.3% → 89.7%，
-    location 56.4% → 53.8%。诊断：当前 score 不是完美 oracle，Hungarian 最大化
-    总和可能用 "0.85+0.85" 换掉真正对的 "0.92+...."，在短 token 跨页歧义下反而
-    更容易错位。Greedy 的 "先选最高分对" 隐式尊重 "高 conf ≈ 更可信" 的先验。
+    历史上尝试过换非 greedy（全部 revert 回 greedy）：
+    - Week 2 B：**全局** Kuhn-Munkres → arXiv 92.3→89.7 / 56.4→53.8。
+    - Week 7：**同 token 组内** Hungarian → arXiv 同样 92.3→89.7 / 56.4→53.8，
+      Word2Vec 压力集数字没动（85.7%/57.1%）。和 Week 2 B 被同一条
+      `anc_68ab8fb0 Multi-Head Attention` 案例翻掉 —— 这条案例稳定证伪任何
+      "加强 same-token 组内 sum-max" 思路。详见 `benchmarks/reports/week7_group_assign.md`。
 
-    因此 **保留 greedy 为默认**。`_hungarian.py` 模块保留为算法基础设施，等
-    Week 3 的结构化信号（section header / figure caption）把 score 从 "good" 拉
-    到 "oracle-grade" 后再考虑切换。
+    **结论**：在打分还不是 oracle 级之前，greedy 的 "先选最高分对" 隐式先验
+    （"高 conf ≈ 更可信"）比 Hungarian 的 sum-max 健壮。`_hungarian.py` 保留为
+    算法基础设施，未来信号层精度提升后再考虑切换。
 
     同分时以 (a_idx, c_idx) 破平 —— 保证确定性。
     """

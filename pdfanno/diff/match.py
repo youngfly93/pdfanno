@@ -86,6 +86,30 @@ NEUTRAL_LAYOUT = 0.5
 # 用于 counterfactual 测试 —— 证明 section_sim **确实在翻案**，而不是只被代码路径覆盖。
 _SECTION_SIM_ENV_OFF = "PDFANNO_DISABLE_SECTION_SIM"
 
+# Week 9 "broken floor"：当 assigned candidate 的 context_similarity 小于 floor 时，
+# 若该候选不是 "same-location preserved"，判为 broken 而非 relocated。动机见
+# week8_semantic_oracle.md —— 1-to-1 semantic oracle 下 8/9 真失败都是 "pred=relocated,
+# gt=broken"，算法对 ctx 很弱的位置过度乐观。
+#
+# **默认 0.0（关闭）** —— 保证 v0.2.1 tag 以来的所有 baseline / test 行为不变。
+# 运行时通过 `PDFANNO_BROKEN_CTX_FLOOR=0.20` 启用，用于 benchmark sweep 和 A/B。
+# `PDFANNO_DISABLE_BROKEN_FLOOR=1` 显式强制关闭（优先级高于数值）。
+# Same-location preserved 的 case 永不被惩罚 —— 位置对但 ctx 抽取弱是常见情形。
+BROKEN_CTX_FLOOR = 0.0
+_BROKEN_FLOOR_ENV_OFF = "PDFANNO_DISABLE_BROKEN_FLOOR"
+_BROKEN_FLOOR_ENV_VAL = "PDFANNO_BROKEN_CTX_FLOOR"
+
+
+def _active_broken_floor() -> float | None:
+    """返回当前生效的 ctx floor；None 表示关闭。"""
+
+    if os.environ.get(_BROKEN_FLOOR_ENV_OFF) == "1":
+        return None
+    try:
+        return float(os.environ.get(_BROKEN_FLOOR_ENV_VAL, BROKEN_CTX_FLOOR))
+    except ValueError:
+        return BROKEN_CTX_FLOOR
+
 
 def _section_sim_disabled() -> bool:
     """每次调用检查 —— 支持测试中 monkeypatch.setenv。"""
@@ -573,7 +597,7 @@ def _candidate_key(cand: _Candidate) -> tuple:
 
 
 def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
-    """按 anchor + 已分配的 candidate 判 preserved / relocated / changed。"""
+    """按 anchor + 已分配的 candidate 判 preserved / relocated / changed / broken。"""
 
     page_delta = cand.page_index - anchor.page_index
     reason = MatchReason(
@@ -590,10 +614,38 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
         matched_text=cand.matched_text,
     )
 
+    floor = _active_broken_floor()
+    # `preserved_case` 保护罩：same-page exact 且 quad 近邻时绝不被 broken floor 碰。
+    # 其他所有会返回 relocated 的分支都要先过 ctx floor —— ctx 过低即语义丢失。
+    preserved_case = (
+        cand.text_similarity == 1.0
+        and page_delta == 0
+        and _quads_nearby(anchor.quads, cand.quads, threshold=QUAD_PROXIMITY_THRESHOLD)
+    )
+
+    def _maybe_broken(reason_tag: str) -> DiffResult | None:
+        if floor is None or preserved_case:
+            return None
+        if cand.context_similarity >= floor:
+            return None
+        return DiffResult(
+            annotation_id=anchor.annotation_id,
+            status="broken",
+            confidence=round(cand.score, 3),
+            old_anchor=anchor,
+            new_anchor=None,
+            match_reason=reason,
+            review_required=True,
+            message=(
+                f"Context below floor ({cand.context_similarity:.2f} < {floor:.2f}) "
+                f"on {reason_tag}; semantic match lost."
+            ),
+        )
+
     # Fuzzy text match —— 区分两种情形：
     #   A) text 高 (≥0.90)：in-place 小编辑 → `changed`，不卡 context 阈值
     #   B) text 中等 + context 强 → `changed`
-    #   其他 → `relocated`
+    #   其他 → `relocated` / broken（看 ctx floor）
     if cand.text_similarity < 1.0:
         high_text_edit = cand.text_similarity >= HIGH_TEXT_CHANGED_MIN
         mid_text_with_ctx = (
@@ -601,6 +653,7 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
             and cand.context_similarity >= CHANGED_CONTEXT_THRESHOLD
         )
         if high_text_edit or mid_text_with_ctx:
+            # `changed` 保留，不受 floor 影响 —— 高 text 或 ctx 本身已不低。
             return DiffResult(
                 annotation_id=anchor.annotation_id,
                 status="changed",
@@ -614,6 +667,9 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
                     f"(text_sim={cand.text_similarity:.2f}, ctx_sim={cand.context_similarity:.2f})."
                 ),
             )
+        broken = _maybe_broken(f"fuzzy-relocated p{cand.page_index}")
+        if broken is not None:
+            return broken
         return DiffResult(
             annotation_id=anchor.annotation_id,
             status="relocated",
@@ -629,6 +685,9 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
 
     # 以下都是 exact text 命中（quads 非空）。
     if page_delta != 0:
+        broken = _maybe_broken(f"exact cross-page {anchor.page_index}→{cand.page_index}")
+        if broken is not None:
+            return broken
         return DiffResult(
             annotation_id=anchor.annotation_id,
             status="relocated",
@@ -641,7 +700,7 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
         )
 
     # 同页 exact：quad 近邻 → preserved；偏离 → 同页 relocated。
-    if _quads_nearby(anchor.quads, cand.quads, threshold=QUAD_PROXIMITY_THRESHOLD):
+    if preserved_case:
         return DiffResult(
             annotation_id=anchor.annotation_id,
             status="preserved",
@@ -654,6 +713,9 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
         )
 
     distance = _quad_distance(anchor.quads, cand.quads)
+    broken = _maybe_broken(f"same-page shifted {distance:.1f}pt")
+    if broken is not None:
+        return broken
     return DiffResult(
         annotation_id=anchor.annotation_id,
         status="relocated",

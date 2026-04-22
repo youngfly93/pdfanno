@@ -3,6 +3,49 @@
 All notable changes to `pdfanno` are documented here. Versioning follows
 [Semantic Versioning](https://semver.org/) and dates are ISO-8601.
 
+## [0.2.2] — 2026-04-22
+
+Patch release: hardens `pdfanno diff` against false positives discovered by
+the synthetic stress corpus. No default-on research toggles changed.
+
+### Fixed
+
+- Non-text coverage annotations such as sticky notes and square annotations
+  now produce the advertised `unsupported` status instead of falling through
+  to `broken`.
+- Case-only edits are no longer silently treated as exact preserved matches.
+  PyMuPDF's ASCII-insensitive `search_for` result is now post-checked against
+  the hit rectangle, so same-location case-only changes become `changed`.
+- Deleted near-duplicate sentences no longer steal surviving exact-match
+  locations through fuzzy matching. Exact and fuzzy candidates now share text
+  slots only where needed to prevent fuzzy reuse of an exact anchor's position;
+  exact-vs-exact assignment keeps the previous geometry-based behavior.
+- `pdfanno diff --page-window` help text now reflects actual behavior: it is a
+  page-distance confidence scale, not a hard search filter.
+
+### Added
+
+- `benchmarks/tools/stress_diff_synthetic.py`: reproducible synthetic stress
+  corpus covering 16 PDF scenarios and 87 expected annotations.
+- `benchmarks/reports/stress_diff_synthetic.md`: latest stress report. Current
+  result is **0 findings** across preserved, relocated, changed, broken,
+  unsupported, tight layout, rotated page, repeated short-token, multi-line
+  quad, and high-volume near-duplicate cases.
+- Regression tests for unsupported annotations, case-only edits, and
+  near-duplicate deletion false positives.
+
+### Benchmarks
+
+Same-fixture A/B against published `pdfanno==0.2.1`:
+
+- arXiv 1706.03762 v1↔v5: no change (89.7% status / 61.5% location on the
+  regenerated 39-anchor fixture).
+- Revised synthetic: no change (88.5% / 100%).
+- BERT 1810.04805 v1↔v2: no change (100% / 78.6%).
+- Word2Vec 1301.3781 v1↔v3 stressed fixture: improved from 80.0% / 53.8% to
+  86.7% / 69.2%.
+- Seq2Seq 1409.3215 v1↔v3 stressed fixture: no change (100% / 94.7%).
+
 ## [0.2.1] — 2026-04-22
 
 Patch release: fixes selected-text extraction on tight-layout PDFs and

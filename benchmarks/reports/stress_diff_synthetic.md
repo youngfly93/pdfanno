@@ -4,7 +4,7 @@
 - scenarios: 16
 - expected annotations: 87
 - page_window: 3
-- runtime: 815.5 ms
+- runtime: 749.3 ms
 - total findings: 0
 - known-hard findings: 0
 
@@ -12,22 +12,22 @@
 
 | scenario | annotations | results | status counts | findings | runtime |
 |---|---:|---:|---|---:|---:|
-| basic_mixed | 4 | 4 | preserved=1, relocated=1, changed=1, broken=1 | 0 | 18.8 ms |
-| page_insert_shift | 3 | 3 | relocated=3 | 0 | 7.9 ms |
-| same_page_geometry | 3 | 3 | preserved=1, relocated=2 | 0 | 12.9 ms |
-| two_column_reorder | 3 | 3 | relocated=3 | 0 | 11.6 ms |
-| multiline_quad | 2 | 2 | preserved=1, relocated=1 | 0 | 14.4 ms |
-| tight_layout | 3 | 3 | preserved=3 | 0 | 13.0 ms |
-| repeated_short_tokens | 3 | 3 | preserved=1, relocated=1, broken=1 | 0 | 11.3 ms |
-| punctuation_hyphenation | 3 | 3 | changed=3 | 0 | 6.5 ms |
-| case_only_edit | 1 | 1 | changed=1 | 0 | 3.1 ms |
-| near_duplicate_deleted | 4 | 4 | preserved=2, broken=2 | 0 | 15.2 ms |
-| rotated_page | 2 | 2 | preserved=2 | 0 | 5.7 ms |
-| annotation_kinds | 3 | 3 | preserved=3 | 0 | 7.6 ms |
-| unsupported_annotations | 2 | 2 | unsupported=2 | 0 | 2.6 ms |
-| far_page_movement | 1 | 1 | relocated=1 | 0 | 7.2 ms |
-| no_annotations | 0 | 0 | - | 0 | 3.4 ms |
-| high_volume | 50 | 50 | preserved=32, relocated=12, broken=6 | 0 | 674.1 ms |
+| basic_mixed | 4 | 4 | preserved=1, relocated=1, changed=1, broken=1 | 0 | 10.3 ms |
+| page_insert_shift | 3 | 3 | relocated=3 | 0 | 7.6 ms |
+| same_page_geometry | 3 | 3 | preserved=1, relocated=2 | 0 | 8.2 ms |
+| two_column_reorder | 3 | 3 | relocated=3 | 0 | 6.0 ms |
+| multiline_quad | 2 | 2 | preserved=1, relocated=1 | 0 | 13.5 ms |
+| tight_layout | 3 | 3 | preserved=3 | 0 | 18.2 ms |
+| repeated_short_tokens | 3 | 3 | preserved=1, relocated=1, broken=1 | 0 | 18.5 ms |
+| punctuation_hyphenation | 3 | 3 | changed=3 | 0 | 9.5 ms |
+| case_only_edit | 1 | 1 | changed=1 | 0 | 2.7 ms |
+| near_duplicate_deleted | 4 | 4 | preserved=2, broken=2 | 0 | 9.7 ms |
+| rotated_page | 2 | 2 | preserved=2 | 0 | 5.3 ms |
+| annotation_kinds | 3 | 3 | preserved=3 | 0 | 7.7 ms |
+| unsupported_annotations | 2 | 2 | unsupported=2 | 0 | 2.2 ms |
+| far_page_movement | 1 | 1 | relocated=1 | 0 | 3.5 ms |
+| no_annotations | 0 | 0 | - | 0 | 1.7 ms |
+| high_volume | 50 | 50 | preserved=32, relocated=12, broken=6 | 0 | 624.7 ms |
 
 ## Finding types
 

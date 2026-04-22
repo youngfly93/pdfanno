@@ -850,9 +850,7 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
             and _quads_nearby(anchor.quads, cand.quads, threshold=QUAD_PROXIMITY_THRESHOLD)
         )
         has_exact_geometry = bool(cand.quads)
-        if same_location_edit or (
-            not has_exact_geometry and (high_text_edit or mid_text_with_ctx)
-        ):
+        if same_location_edit or (not has_exact_geometry and (high_text_edit or mid_text_with_ctx)):
             # `changed` 保留，不受 floor 影响 —— 高 text 或 ctx 本身已不低。
             return DiffResult(
                 annotation_id=anchor.annotation_id,

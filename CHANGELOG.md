@@ -27,6 +27,40 @@ baselines.
 - Word2Vec (arXiv 1301.3781 v1↔v3) and Seq2Seq (arXiv 1409.3215 v1↔v3)
   as benchmark papers specifically for tight-layout regression cases.
 - `benchmarks/baselines/v0.2.1.json` — 5-benchmark baseline snapshot.
+- **Full `pdfanno diff` documentation**: `docs/diff.md` (workflow,
+  statuses, confidence decomposition, JSON contract, known limitations,
+  research env toggles) and `docs/examples/arxiv_attention_v1_to_v5.md`
+  (3-minute walkthrough on a real 39-highlight paper pair).
+- **Semantic oracle** for benchmark evaluation:
+  `benchmarks/tools/ground_truth_semantic.py` — 1-to-1 context-based
+  ground truth, resilient to token add/remove shifts that fooled the
+  original rank-k oracle.
+- **Shared context-similarity helper** `pdfanno/diff/context.py` — used
+  by both the matcher and the semantic oracle so the two can't disagree
+  on ctx algorithm again.
+- **Opt-in research toggles** in `pdfanno/diff/match.py`, all default-off
+  (see `docs/diff.md` §6 and `benchmarks/reports/v0.2_scorer_summary.md`
+  for rationale and measured effects):
+  - `PDFANNO_CTX_SIM_MODE=concat` — matcher ctx similarity switches to
+    oracle-aligned concat mode.
+  - `PDFANNO_BROKEN_CTX_FLOOR=<float>` — force `broken` when a
+    `relocated` candidate's context similarity falls below the floor.
+  - `PDFANNO_DISABLE_BROKEN_FLOOR=1` — unconditional disable.
+  - `PDFANNO_CTX_AWARE_ASSIGN=1` (+ `_EPSILON`, `_MIN_ADVANTAGE`) —
+    enable same-token ctx-aware preemption in the 1:1 assigner.
+  - `PDFANNO_DISABLE_SECTION_SIM=1` — disable section subscore.
+- Week 6–11 research reports in `benchmarks/reports/` and a
+  consolidated `v0.2_scorer_summary.md` recording the scorer-freeze
+  decision.
+
+### Scorer freeze
+
+After six weeks of investigation (broken floor, concat ctx mode,
+ctx-aware preemption, Hungarian variants, per-anchor ctx window), none
+of the explored levers produce a default-on improvement across all five
+benchmarks. The default scorer behavior is therefore **frozen at v0.2.1
+semantics**; all research mechanisms above are preserved as opt-in
+environment variables for reproducibility and future work.
 
 ### Benchmarks
 
@@ -42,10 +76,13 @@ Newly passing (were blocked at anchor-extraction before this fix):
 ### Deferred
 
 - `section_sim` stays experimental. No change in this release.
-- arXiv 1706's 11 short-token large-shift failures
-  (BLEU / WMT 2014 / Multi-Head Attention in the Results section)
-  remain unresolved — that is a separate "repeated short-token
-  relocation" problem, not a tight-layout problem.
+- arXiv 1706's repeated short-token relocation failures
+  (BLEU / WMT 2014 / Multi-Head Attention) remain the dominant
+  residual failure class. Diagnosed as a design trade-off between
+  first-match ctx anchoring (required for overall stability) and
+  per-anchor ctx (needed for same-token disambiguation). Expected to
+  be revisited once a semantic / embedding-based ctx lever is
+  available; see `benchmarks/reports/v0.2_scorer_summary.md` §7.
 
 ## [0.2.0] — 2026-04-21
 

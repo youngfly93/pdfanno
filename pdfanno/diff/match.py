@@ -33,6 +33,7 @@ from difflib import SequenceMatcher
 
 import pymupdf
 
+from pdfanno.diff import context as ctx
 from pdfanno.diff.anchors import CONTEXT_CHARS
 from pdfanno.diff.sections import SectionSpan, build_section_index, section_for
 from pdfanno.diff.types import (
@@ -514,20 +515,19 @@ def _length_similarity(len_a: int, len_b: int) -> float:
 
 
 def _context_similarity(anchor: Anchor, new_before: str, new_after: str) -> float:
-    """旧 anchor 的 ±context 与新位置 ±context 的 SequenceMatcher ratio 平均。
+    """旧 anchor 的 ±context 与新位置 ±context 的相似度。
 
-    若 anchor 两侧 context 都为空 —— 例如选中文本正好在页首或页尾 —— 返回 0.0
-    （context 无信号，不参与加分也不减分，因为 W_CONTEXT 对双方都是零贡献）。
+    实现委托给 `pdfanno.diff.context.context_similarity`，默认 `mean` 模式 ——
+    与 v0.2.1 行为一致。`PDFANNO_CTX_SIM_MODE=concat` 可切到与 semantic oracle
+    对齐的 concat 算法（Week 10 实验；见 `week10_ctx_mode.md`）。
     """
 
-    parts: list[float] = []
-    if anchor.context_before:
-        parts.append(SequenceMatcher(None, anchor.context_before, new_before).ratio())
-    if anchor.context_after:
-        parts.append(SequenceMatcher(None, anchor.context_after, new_after).ratio())
-    if not parts:
-        return 0.0
-    return sum(parts) / len(parts)
+    mode = os.environ.get("PDFANNO_CTX_SIM_MODE", ctx.DEFAULT_MODE)
+    if mode not in ctx.ALL_MODES:
+        mode = ctx.DEFAULT_MODE
+    return ctx.context_similarity(
+        anchor.context_before, anchor.context_after, new_before, new_after, mode=mode
+    )
 
 
 def _proximity(page_delta: int, page_window: int) -> float:

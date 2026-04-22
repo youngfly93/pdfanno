@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from difflib import SequenceMatcher
 from pathlib import Path
 
 from benchmarks.tools.ground_truth import (
@@ -38,6 +37,7 @@ from benchmarks.tools.ground_truth import (
     _rank_in_v1,
 )
 from pdfanno.diff.anchors import CONTEXT_CHARS, extract_anchors
+from pdfanno.diff.context import context_similarity
 from pdfanno.pdf_core.document import compute_doc_id, open_pdf
 from pdfanno.pdf_core.text import normalize_text
 
@@ -83,11 +83,19 @@ def build_ground_truth_semantic(v1_path: Path, v2_path: Path) -> dict:
             continue
 
         # 为每个 v2 occurrence 算局部 ctx。真正的 1-to-1 挑选在下面的 global 分配里做。
-        anchor_ctx = anchor.context_before + " || " + anchor.context_after
+        # 用共享 helper（concat 模式）—— 与 matcher 可共用同一份 ctx 定义。
         sims: list[float] = []
         for i, (v2_page, v2_quad) in enumerate(v2_occs):
-            v2_ctx = _local_ctx(v2_page_text, v2_page, v2_quad, query, v2_occs, i)
-            sims.append(SequenceMatcher(None, anchor_ctx, v2_ctx).ratio() if v2_ctx else 0.0)
+            v2_before, v2_after = _local_ctx(v2_page_text, v2_page, v2_quad, query, v2_occs, i)
+            sims.append(
+                context_similarity(
+                    anchor.context_before,
+                    anchor.context_after,
+                    v2_before,
+                    v2_after,
+                    mode="concat",
+                )
+            )
         pending.append(
             {
                 "anchor": anchor,
@@ -186,11 +194,15 @@ def _local_ctx(
     query: str,
     all_occs: list[tuple[int, list[float]]],
     this_idx: int,
-) -> str:
-    """取 v2 第 this_idx 次 occurrence 附近的 ctx（before || after 拼接）。"""
+) -> tuple[str, str]:
+    """取 v2 第 this_idx 次 occurrence 附近的 (before, after) ctx，分离返回。
+
+    分离后供 `pdfanno.diff.context.context_similarity` 处理 —— 和 matcher 共享
+    同一 helper，避免再出现 "oracle ctx 和 matcher ctx 说的不是同一种语言"。
+    """
 
     if page < 0 or page >= len(v2_page_text):
-        return ""
+        return "", ""
     page_text = v2_page_text[page]
     # 统计本 page 里 query 是第几次 occurrence（v2 全局 rank → 本页局部 rank）。
     local_k = sum(1 for i, (p, _q) in enumerate(all_occs[:this_idx]) if p == page)
@@ -200,11 +212,11 @@ def _local_ctx(
     for _ in range(local_k + 1):
         idx = page_text.find(query, start)
         if idx < 0:
-            return ""
+            return "", ""
         start = idx + len(query)
     before = page_text[max(0, idx - CONTEXT_CHARS) : idx]
     after = page_text[idx + len(query) : idx + len(query) + CONTEXT_CHARS]
-    return before + " || " + after
+    return before, after
 
 
 def _decide_status(anchor, v2_page: int, v2_quad: list[float]) -> tuple[str, str]:

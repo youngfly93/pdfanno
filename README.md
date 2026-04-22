@@ -78,6 +78,34 @@ pdfanno import paper.with_external_highlights.pdf
 pdfanno rebind old/path/paper.pdf new/path/paper.pdf
 ```
 
+## Migrating annotations across PDF versions (`diff`)
+
+`pdfanno diff OLD.pdf NEW.pdf` compares the annotations already stored in
+`OLD.pdf` against `NEW.pdf` and classifies each one as:
+
+| Status | Meaning |
+|---|---|
+| `preserved` | Same page, same location (text still there, centers within ~15 pt). |
+| `relocated` | Same text found, but moved to another page or position. |
+| `changed` | Text around the annotation is recognizably edited. |
+| `ambiguous` | Multiple candidates with close scores — flagged for review. |
+| `broken` | Text no longer found in the new version (or only unrecognizable candidates). |
+
+Each result carries a `confidence` in `[0, 1]` decomposed into five signals
+(text / context / layout / page proximity / length). Agents can filter by
+`status` + `confidence` and pipe the rest to human review.
+
+```bash
+# Emit a diff report (JSON) for a paper that got revised.
+pdfanno diff paper_v1.pdf paper_v2.pdf --json > diff.json
+
+# Or write directly to a file, with a human-readable summary on stderr.
+pdfanno diff paper_v1.pdf paper_v2.pdf --diff-out diff.json
+```
+
+See [`docs/diff.md`](docs/diff.md) for the full migration workflow, status
+decision tree, and how to consume the JSON.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -140,7 +168,9 @@ is edited elsewhere and the `/ID` regenerates, run `pdfanno rebind`.
 `pdfanno` intentionally stops before:
 
 - Regex / sentence / section-scoped matching (slated for v1.5).
-- Terminal UI (TUI) — Textual app is v0.2.0 (Phase 2).
+- Terminal UI (TUI) for the PDF reader — Phase 2. A narrower
+  `pdfanno review diff.json` TUI (just for reviewing `diff` output) is on
+  deck.
 - Kitty/Sixel image rendering — v0.3.0 (Phase 3).
 - OCR on scanned PDFs.
 - Automatic merge between sidecar drafts and externally-edited PDF annotations.

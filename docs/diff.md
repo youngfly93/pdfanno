@@ -93,6 +93,9 @@ result, so you can build your own decision rule on top. As a rule of thumb:
 
 ## 3. A concrete workflow
 
+> For a fully worked walkthrough on a real paper with 39 annotations, see
+> [`examples/arxiv_attention_v1_to_v5.md`](examples/arxiv_attention_v1_to_v5.md).
+
 Say you have `paper_v1.pdf` (with ~30 highlights) and `paper_v2.pdf` (the
 revised version). You want to carry highlights forward.
 

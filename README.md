@@ -103,8 +103,9 @@ pdfanno diff paper_v1.pdf paper_v2.pdf --json > diff.json
 pdfanno diff paper_v1.pdf paper_v2.pdf --diff-out diff.json
 ```
 
-See [`docs/diff.md`](docs/diff.md) for the full migration workflow, status
-decision tree, and how to consume the JSON.
+See [`docs/diff.md`](docs/diff.md) for the full migration workflow, and
+[`docs/examples/arxiv_attention_v1_to_v5.md`](docs/examples/arxiv_attention_v1_to_v5.md)
+for a 3-minute walkthrough on a real 39-highlight paper.
 
 ## Exit codes
 

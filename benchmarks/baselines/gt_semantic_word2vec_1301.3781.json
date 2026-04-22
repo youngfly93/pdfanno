@@ -1,13 +1,13 @@
 {
   "schema_version": 2,
-  "oracle": "semantic",
+  "oracle": "semantic-1to1",
   "old_pdf": "/tmp/pdfanno_benches/word2vec_1301.3781/v1_hl.pdf",
   "new_pdf": "/tmp/pdfanno_benches/word2vec_1301.3781/v2.pdf",
   "total_labels": 15,
   "summary": {
-    "preserved": 1,
+    "preserved": 0,
     "relocated": 11,
-    "broken": 3,
+    "broken": 4,
     "needs_review": 0
   },
   "labels": [
@@ -68,22 +68,11 @@
         200.88031005859375
       ],
       "v1_occurrence_rank": 0,
-      "gt_status": "preserved",
-      "gt_page": 0,
-      "gt_quad": [
-        214.81602478027344,
-        190.95654296875,
-        249.9939422607422,
-        190.95654296875,
-        214.81602478027344,
-        200.9191436767578,
-        249.9939422607422,
-        200.9191436767578
-      ],
-      "gt_reason": "same page, quad centers within 0.0 pt",
-      "gt_method": "semantic",
-      "gt_ctx_similarity": 0.9512,
-      "gt_v2_occurrence_rank": 0
+      "gt_status": "broken",
+      "gt_page": null,
+      "gt_quad": null,
+      "gt_reason": "all higher-ctx v2 occurrences claimed by other anchors; own best ctx was 0.951",
+      "gt_method": "semantic"
     },
     {
       "annotation_id": "anc_a76798b3e7d08a16",
@@ -113,7 +102,7 @@
         200.9191436767578
       ],
       "gt_reason": "same page but shifted 54.2 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.9557,
       "gt_v2_occurrence_rank": 0
     },
@@ -145,7 +134,7 @@
         359.9118347167969
       ],
       "gt_reason": "same page but shifted 216.6 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.4437,
       "gt_v2_occurrence_rank": 0
     },
@@ -177,7 +166,7 @@
         398.76580810546875
       ],
       "gt_reason": "same page but shifted 326.2 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.4618,
       "gt_v2_occurrence_rank": 1
     },
@@ -209,7 +198,7 @@
         426.1557922363281
       ],
       "gt_reason": "same page but shifted 99.7 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.9967,
       "gt_v2_occurrence_rank": 0
     },
@@ -241,7 +230,7 @@
         186.1270294189453
       ],
       "gt_reason": "same page but shifted 92.1 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.7298,
       "gt_v2_occurrence_rank": 1
     },
@@ -273,7 +262,7 @@
         186.1270294189453
       ],
       "gt_reason": "same page but shifted 189.0 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.7298,
       "gt_v2_occurrence_rank": 6
     },
@@ -305,7 +294,7 @@
         394.597900390625
       ],
       "gt_reason": "same page but shifted 300.5 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.6754,
       "gt_v2_occurrence_rank": 0
     },
@@ -337,7 +326,7 @@
         574.373779296875
       ],
       "gt_reason": "same page but shifted 331.4 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.5546,
       "gt_v2_occurrence_rank": 0
     },
@@ -369,7 +358,7 @@
         677.4739379882812
       ],
       "gt_reason": "page moved from 3 to 4",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.8344,
       "gt_v2_occurrence_rank": 0
     },
@@ -422,7 +411,7 @@
         594.9877319335938
       ],
       "gt_reason": "same page but shifted 332.6 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.6325,
       "gt_v2_occurrence_rank": 1
     },
@@ -454,7 +443,7 @@
         100.87458801269531
       ],
       "gt_reason": "page moved from 5 to 6",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.9823,
       "gt_v2_occurrence_rank": 0
     }

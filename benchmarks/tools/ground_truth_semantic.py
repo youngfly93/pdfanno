@@ -63,6 +63,7 @@ def build_ground_truth_semantic(v1_path: Path, v2_path: Path) -> dict:
         v2_page_text = [normalize_text(d2[i].get_text("text") or "") for i in range(d2.page_count)]
 
     labels: list[dict] = []
+    pending: list[dict] = []  # anchor 要 global 1-to-1 分配的状态
     for anchor in v1_anchors:
         query = normalize_text(anchor.selected_text)
         if not query:
@@ -81,49 +82,95 @@ def build_ground_truth_semantic(v1_path: Path, v2_path: Path) -> dict:
             labels.append(_label_broken(anchor, v1_rank, "v2 has 0 occurrences of this token"))
             continue
 
-        # 为每个 v2 occurrence 算局部 ctx，和 anchor 的 ctx 比。
+        # 为每个 v2 occurrence 算局部 ctx。真正的 1-to-1 挑选在下面的 global 分配里做。
         anchor_ctx = anchor.context_before + " || " + anchor.context_after
-        best_idx = -1
-        best_sim = -1.0
+        sims: list[float] = []
         for i, (v2_page, v2_quad) in enumerate(v2_occs):
             v2_ctx = _local_ctx(v2_page_text, v2_page, v2_quad, query, v2_occs, i)
-            sim = SequenceMatcher(None, anchor_ctx, v2_ctx).ratio() if v2_ctx else 0.0
-            if sim > best_sim:
-                best_sim = sim
-                best_idx = i
-
-        if best_idx < 0 or best_sim < MIN_CTX_SIM:
-            labels.append(
-                _label_broken(
-                    anchor,
-                    v1_rank,
-                    f"best v2 ctx_sim {best_sim:.3f} < {MIN_CTX_SIM} (token likely removed semantically)",
-                )
-            )
-            continue
-
-        v2_page, v2_quad = v2_occs[best_idx]
-        gt_status, gt_reason = _decide_status(anchor, v2_page, v2_quad)
-        labels.append(
+            sims.append(SequenceMatcher(None, anchor_ctx, v2_ctx).ratio() if v2_ctx else 0.0)
+        pending.append(
             {
-                "annotation_id": anchor.annotation_id,
-                "selected_text": anchor.selected_text,
-                "v1_page": anchor.page_index,
-                "v1_quad": anchor.quads[0] if anchor.quads else None,
-                "v1_occurrence_rank": v1_rank,
-                "gt_status": gt_status,
-                "gt_page": v2_page,
-                "gt_quad": v2_quad,
-                "gt_reason": gt_reason,
-                "gt_method": "semantic",
-                "gt_ctx_similarity": round(best_sim, 4),
-                "gt_v2_occurrence_rank": best_idx,  # 对比旧 oracle：这里可能 ≠ v1_rank
+                "anchor": anchor,
+                "v1_rank": v1_rank,
+                "query": query,
+                "v2_occs": v2_occs,
+                "sims": sims,
+                "label_index": len(labels),
             }
         )
+        labels.append(None)  # placeholder，下面 global 分配后填
+
+    # 1-to-1 global 分配 —— 按 (sim desc, v1_rank asc) 排所有 (pending anchor, v2_occ)
+    # 三元组，greedy 挑。每个 anchor 只取一次，每个 v2 occurrence 只被认领一次。
+    claimed: set[tuple] = set()
+    assigned: dict[str, tuple[int, list[float], float, int]] = {}
+    triples: list[tuple[float, int, int]] = []
+    for pi, entry in enumerate(pending):
+        for oi, sim in enumerate(entry["sims"]):
+            triples.append((sim, pi, oi))
+    triples.sort(key=lambda t: (-t[0], t[1], t[2]))
+
+    for sim, pi, oi in triples:
+        if sim < MIN_CTX_SIM:
+            break
+        entry = pending[pi]
+        aid = entry["anchor"].annotation_id
+        if aid in assigned:
+            continue
+        v2_page, v2_quad = entry["v2_occs"][oi]
+        # 用 (page, rounded quad center) 作为 v2 位置 key —— 即便同位置由 search_for
+        # 返回了 2 个重叠的 quad（edge case），也只算一个 slot。
+        v2_key = (
+            v2_page,
+            round((v2_quad[0] + v2_quad[6]) / 2, 1),
+            round((v2_quad[1] + v2_quad[7]) / 2, 1),
+        )
+        if v2_key in claimed:
+            continue
+        assigned[aid] = (v2_page, v2_quad, sim, oi)
+        claimed.add(v2_key)
+
+    # 回填 labels 里的 placeholder
+    for entry in pending:
+        anchor = entry["anchor"]
+        aid = anchor.annotation_id
+        pick = assigned.get(aid)
+        if pick is None:
+            # 所有 sim 都 < MIN_CTX_SIM，或被其他 anchor 抢光。
+            best_sim = max(entry["sims"]) if entry["sims"] else 0.0
+            if best_sim < MIN_CTX_SIM:
+                reason = (
+                    f"best v2 ctx_sim {best_sim:.3f} < {MIN_CTX_SIM} "
+                    f"(token likely removed semantically)"
+                )
+            else:
+                reason = (
+                    f"all higher-ctx v2 occurrences claimed by other anchors; "
+                    f"own best ctx was {best_sim:.3f}"
+                )
+            labels[entry["label_index"]] = _label_broken(anchor, entry["v1_rank"], reason)
+            continue
+
+        v2_page, v2_quad, best_sim, v2_rank = pick
+        gt_status, gt_reason = _decide_status(anchor, v2_page, v2_quad)
+        labels[entry["label_index"]] = {
+            "annotation_id": aid,
+            "selected_text": anchor.selected_text,
+            "v1_page": anchor.page_index,
+            "v1_quad": anchor.quads[0] if anchor.quads else None,
+            "v1_occurrence_rank": entry["v1_rank"],
+            "gt_status": gt_status,
+            "gt_page": v2_page,
+            "gt_quad": v2_quad,
+            "gt_reason": gt_reason,
+            "gt_method": "semantic-1to1",
+            "gt_ctx_similarity": round(best_sim, 4),
+            "gt_v2_occurrence_rank": v2_rank,
+        }
 
     return {
         "schema_version": 2,
-        "oracle": "semantic",
+        "oracle": "semantic-1to1",
         "old_pdf": str(v1_path),
         "new_pdf": str(v2_path),
         "total_labels": len(labels),

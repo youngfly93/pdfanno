@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "oracle": "semantic",
+  "oracle": "semantic-1to1",
   "old_pdf": "/tmp/pdfanno_benches/bert_1810.04805/v1_hl.pdf",
   "new_pdf": "/tmp/pdfanno_benches/bert_1810.04805/v2.pdf",
   "total_labels": 14,
@@ -39,7 +39,7 @@
         85.02820587158203
       ],
       "gt_reason": "same page, quad centers within 0.0 pt",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 1.0,
       "gt_v2_occurrence_rank": 0
     },
@@ -71,7 +71,7 @@
         85.02820587158203
       ],
       "gt_reason": "same page, quad centers within 0.0 pt",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 1.0,
       "gt_v2_occurrence_rank": 0
     },
@@ -103,7 +103,7 @@
         697.855712890625
       ],
       "gt_reason": "same page but shifted 72.0 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.4973,
       "gt_v2_occurrence_rank": 0
     },
@@ -135,7 +135,7 @@
         85.02820587158203
       ],
       "gt_reason": "same page, quad centers within 0.0 pt",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 1.0,
       "gt_v2_occurrence_rank": 0
     },
@@ -167,7 +167,7 @@
         475.0870056152344
       ],
       "gt_reason": "same page, quad centers within 8.1 pt",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.7815,
       "gt_v2_occurrence_rank": 0
     },
@@ -199,7 +199,7 @@
         510.9529724121094
       ],
       "gt_reason": "same page but shifted 47.0 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.6391,
       "gt_v2_occurrence_rank": 0
     },
@@ -231,7 +231,7 @@
         548.2907104492188
       ],
       "gt_reason": "same page but shifted 50.0 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.846,
       "gt_v2_occurrence_rank": 0
     },
@@ -263,7 +263,7 @@
         85.02820587158203
       ],
       "gt_reason": "same page, quad centers within 0.0 pt",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 1.0,
       "gt_v2_occurrence_rank": 0
     },
@@ -295,7 +295,7 @@
         279.6930847167969
       ],
       "gt_reason": "same page, quad centers within 5.0 pt",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.952,
       "gt_v2_occurrence_rank": 0
     },
@@ -348,7 +348,7 @@
         144.1490020751953
       ],
       "gt_reason": "same page but shifted 359.9 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.4696,
       "gt_v2_occurrence_rank": 0
     },
@@ -380,7 +380,7 @@
         117.05097961425781
       ],
       "gt_reason": "same page but shifted 27.1 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.6026,
       "gt_v2_occurrence_rank": 0
     },
@@ -412,7 +412,7 @@
         198.34584045410156
       ],
       "gt_reason": "page moved from 2 to 3",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.1606,
       "gt_v2_occurrence_rank": 0
     },
@@ -444,7 +444,7 @@
         171.24781799316406
       ],
       "gt_reason": "same page but shifted 140.3 pt (> 15.0 pt)",
-      "gt_method": "semantic",
+      "gt_method": "semantic-1to1",
       "gt_ctx_similarity": 0.7715,
       "gt_v2_occurrence_rank": 0
     }

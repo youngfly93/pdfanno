@@ -1,0 +1,462 @@
+{
+  "schema_version": 2,
+  "oracle": "semantic",
+  "old_pdf": "/tmp/pdfanno_benches/word2vec_1301.3781/v1_hl.pdf",
+  "new_pdf": "/tmp/pdfanno_benches/word2vec_1301.3781/v2.pdf",
+  "total_labels": 15,
+  "summary": {
+    "preserved": 1,
+    "relocated": 11,
+    "broken": 3,
+    "needs_review": 0
+  },
+  "labels": [
+    {
+      "annotation_id": "anc_d886ca46fe5df5bc",
+      "selected_text": "vector representations of words",
+      "v1_page": 0,
+      "v1_quad": [
+        352.079345703125,
+        697.5088500976562,
+        478.11468505859375,
+        697.5088500976562,
+        352.079345703125,
+        710.7990112304688,
+        478.11468505859375,
+        710.7990112304688
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "broken",
+      "gt_page": null,
+      "gt_quad": null,
+      "gt_reason": "best v2 ctx_sim 0.085 < 0.15 (token likely removed semantically)",
+      "gt_method": "semantic"
+    },
+    {
+      "annotation_id": "anc_bf673eaa243ae3d4",
+      "selected_text": "neural network language models",
+      "v1_page": 0,
+      "v1_quad": [
+        371.7593994140625,
+        581.8290405273438,
+        500.2894592285156,
+        581.8290405273438,
+        371.7593994140625,
+        595.1192016601562,
+        500.2894592285156,
+        595.1192016601562
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "broken",
+      "gt_page": null,
+      "gt_quad": null,
+      "gt_reason": "best v2 ctx_sim 0.000 < 0.15 (token likely removed semantically)",
+      "gt_method": "semantic"
+    },
+    {
+      "annotation_id": "anc_01346b5fa1e19592",
+      "selected_text": "Mikolov",
+      "v1_page": 0,
+      "v1_quad": [
+        214.7997589111328,
+        190.91766357421875,
+        250.02093505859375,
+        190.91766357421875,
+        214.7997589111328,
+        200.88031005859375,
+        250.02093505859375,
+        200.88031005859375
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "preserved",
+      "gt_page": 0,
+      "gt_quad": [
+        214.81602478027344,
+        190.95654296875,
+        249.9939422607422,
+        190.95654296875,
+        214.81602478027344,
+        200.9191436767578,
+        249.9939422607422,
+        200.9191436767578
+      ],
+      "gt_reason": "same page, quad centers within 0.0 pt",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.9512,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_a76798b3e7d08a16",
+      "selected_text": "mikolov",
+      "v1_page": 0,
+      "v1_quad": [
+        165.23997497558594,
+        219.26385498046875,
+        207.21755981445312,
+        219.26385498046875,
+        165.23997497558594,
+        229.22650146484375,
+        207.21755981445312,
+        229.22650146484375
+      ],
+      "v1_occurrence_rank": 1,
+      "gt_status": "relocated",
+      "gt_page": 0,
+      "gt_quad": [
+        214.81602478027344,
+        190.95654296875,
+        249.9939422607422,
+        190.95654296875,
+        214.81602478027344,
+        200.9191436767578,
+        249.9939422607422,
+        200.9191436767578
+      ],
+      "gt_reason": "same page but shifted 54.2 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.9557,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_ba8b54d4fe66dafb",
+      "selected_text": "projection layer",
+      "v1_page": 1,
+      "v1_quad": [
+        159.83984375,
+        163.9893798828125,
+        222.4374237060547,
+        163.9893798828125,
+        159.83984375,
+        177.279541015625,
+        222.4374237060547,
+        177.279541015625
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 1,
+      "gt_quad": [
+        273.49871826171875,
+        349.94921875,
+        336.2630310058594,
+        349.94921875,
+        273.49871826171875,
+        359.9118347167969,
+        336.2630310058594,
+        359.9118347167969
+      ],
+      "gt_reason": "same page but shifted 216.6 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.4437,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_e00ad9710c48f097",
+      "selected_text": "nnlm",
+      "v1_page": 1,
+      "v1_quad": [
+        296.51983642578125,
+        712.8816528320312,
+        318.099609375,
+        712.8816528320312,
+        296.51983642578125,
+        721.8480224609375,
+        318.099609375,
+        721.8480224609375
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 1,
+      "gt_quad": [
+        251.15264892578125,
+        388.8031921386719,
+        280.4825439453125,
+        388.8031921386719,
+        251.15264892578125,
+        398.76580810546875,
+        280.4825439453125,
+        398.76580810546875
+      ],
+      "gt_reason": "same page but shifted 326.2 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.4618,
+      "gt_v2_occurrence_rank": 1
+    },
+    {
+      "annotation_id": "anc_50b3e7d6f3b9d52b",
+      "selected_text": "hierarchical softmax",
+      "v1_page": 2,
+      "v1_quad": [
+        196.5598907470703,
+        314.828857421875,
+        277.9812316894531,
+        314.828857421875,
+        196.5598907470703,
+        328.1190185546875,
+        277.9812316894531,
+        328.1190185546875
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 2,
+      "gt_quad": [
+        196.5576629638672,
+        416.19317626953125,
+        277.83258056640625,
+        416.19317626953125,
+        196.5576629638672,
+        426.1557922363281,
+        277.83258056640625,
+        426.1557922363281
+      ],
+      "gt_reason": "same page but shifted 99.7 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.9967,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_9f28db2d0b6eec09",
+      "selected_text": "NNLM)",
+      "v1_page": 2,
+      "v1_quad": [
+        314.5197448730469,
+        84.11767578125,
+        344.9244689941406,
+        84.11767578125,
+        314.5197448730469,
+        94.080322265625,
+        344.9244689941406,
+        94.080322265625
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 2,
+      "gt_quad": [
+        314.4748840332031,
+        176.1644287109375,
+        348.2281494140625,
+        176.1644287109375,
+        314.4748840332031,
+        186.1270294189453,
+        348.2281494140625,
+        186.1270294189453
+      ],
+      "gt_reason": "same page but shifted 92.1 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.7298,
+      "gt_v2_occurrence_rank": 1
+    },
+    {
+      "annotation_id": "anc_defff5e1f0d9c18f",
+      "selected_text": "NNLM",
+      "v1_page": 2,
+      "v1_quad": [
+        126.36056518554688,
+        162.789306640625,
+        155.73733520507812,
+        162.789306640625,
+        126.36056518554688,
+        176.0794677734375,
+        155.73733520507812,
+        176.0794677734375
+      ],
+      "v1_occurrence_rank": 2,
+      "gt_status": "relocated",
+      "gt_page": 2,
+      "gt_quad": [
+        314.4748840332031,
+        176.1644287109375,
+        344.9106140136719,
+        176.1644287109375,
+        314.4748840332031,
+        186.1270294189453,
+        344.9106140136719,
+        186.1270294189453
+      ],
+      "gt_reason": "same page but shifted 189.0 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.7298,
+      "gt_v2_occurrence_rank": 6
+    },
+    {
+      "annotation_id": "anc_a34ba5fdf1aec664",
+      "selected_text": "Continuous Bag-of-Words Model",
+      "v1_page": 3,
+      "v1_quad": [
+        130.43984985351562,
+        84.11767578125,
+        271.3292541503906,
+        84.11767578125,
+        130.43984985351562,
+        94.080322265625,
+        271.3292541503906,
+        94.080322265625
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 3,
+      "gt_quad": [
+        130.4158477783203,
+        384.63531494140625,
+        271.3666687011719,
+        384.63531494140625,
+        130.4158477783203,
+        394.597900390625,
+        271.3666687011719,
+        394.597900390625
+      ],
+      "gt_reason": "same page but shifted 300.5 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.6754,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_dc4d5a7d2bcefa23",
+      "selected_text": "Skip-gram",
+      "v1_page": 3,
+      "v1_quad": [
+        182.16078186035156,
+        233.03741455078125,
+        227.65963745117188,
+        233.03741455078125,
+        182.16078186035156,
+        243.00006103515625,
+        227.65963745117188,
+        243.00006103515625
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 3,
+      "gt_quad": [
+        182.1815185546875,
+        564.4111938476562,
+        227.57110595703125,
+        564.4111938476562,
+        182.1815185546875,
+        574.373779296875,
+        227.57110595703125,
+        574.373779296875
+      ],
+      "gt_reason": "same page but shifted 331.4 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.5546,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_72d3fa4c6099c2ed",
+      "selected_text": "large amount of data,",
+      "v1_page": 3,
+      "v1_quad": [
+        404.0412292480469,
+        653.5884399414062,
+        486.7044372558594,
+        653.5884399414062,
+        404.0412292480469,
+        666.8786010742188,
+        486.7044372558594,
+        666.8786010742188
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 4,
+      "gt_quad": [
+        404.03839111328125,
+        667.5113525390625,
+        489.0990295410156,
+        667.5113525390625,
+        404.03839111328125,
+        677.4739379882812,
+        489.0990295410156,
+        677.4739379882812
+      ],
+      "gt_reason": "page moved from 3 to 4",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.8344,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_a49ff1c80da08f11",
+      "selected_text": "CBOW.",
+      "v1_page": 3,
+      "v1_quad": [
+        237.2409210205078,
+        205.029052734375,
+        266.68548583984375,
+        205.029052734375,
+        237.2409210205078,
+        218.3192138671875,
+        266.68548583984375,
+        218.3192138671875
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "broken",
+      "gt_page": null,
+      "gt_quad": null,
+      "gt_reason": "v2 has 0 occurrences of this token",
+      "gt_method": "semantic"
+    },
+    {
+      "annotation_id": "anc_f714904ac094e80a",
+      "selected_text": "CBOW,",
+      "v1_page": 3,
+      "v1_quad": [
+        254.4010467529297,
+        250.74896240234375,
+        283.8455810546875,
+        250.74896240234375,
+        254.4010467529297,
+        264.03912353515625,
+        283.8455810546875,
+        264.03912353515625
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 3,
+      "gt_quad": [
+        254.35073852539062,
+        585.025146484375,
+        285.46392822265625,
+        585.025146484375,
+        254.35073852539062,
+        594.9877319335938,
+        285.46392822265625,
+        594.9877319335938
+      ],
+      "gt_reason": "same page but shifted 332.6 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.6325,
+      "gt_v2_occurrence_rank": 1
+    },
+    {
+      "annotation_id": "anc_10781f089a434d19",
+      "selected_text": "Semantic-Syntactic Word Relationship",
+      "v1_page": 5,
+      "v1_quad": [
+        264.1203918457031,
+        91.01165771484375,
+        419.5814208984375,
+        91.01165771484375,
+        264.1203918457031,
+        100.97430419921875,
+        419.5814208984375,
+        100.97430419921875
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 6,
+      "gt_quad": [
+        264.1572265625,
+        90.9119873046875,
+        419.3544921875,
+        90.9119873046875,
+        264.1572265625,
+        100.87458801269531,
+        419.3544921875,
+        100.87458801269531
+      ],
+      "gt_reason": "page moved from 5 to 6",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.9823,
+      "gt_v2_occurrence_rank": 0
+    }
+  ]
+}

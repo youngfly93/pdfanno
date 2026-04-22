@@ -1,0 +1,452 @@
+{
+  "schema_version": 2,
+  "oracle": "semantic",
+  "old_pdf": "/tmp/pdfanno_benches/bert_1810.04805/v1_hl.pdf",
+  "new_pdf": "/tmp/pdfanno_benches/bert_1810.04805/v2.pdf",
+  "total_labels": 14,
+  "summary": {
+    "preserved": 6,
+    "relocated": 7,
+    "broken": 1,
+    "needs_review": 0
+  },
+  "labels": [
+    {
+      "annotation_id": "anc_bbed930f9f326739",
+      "selected_text": "BERT",
+      "v1_page": 0,
+      "v1_quad": [
+        116.51899719238281,
+        70.6820068359375,
+        155.0098419189453,
+        70.6820068359375,
+        116.51899719238281,
+        85.0281982421875,
+        155.0098419189453,
+        85.0281982421875
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "preserved",
+      "gt_page": 0,
+      "gt_quad": [
+        116.51899719238281,
+        70.6820068359375,
+        155.0098419189453,
+        70.6820068359375,
+        116.51899719238281,
+        85.02820587158203,
+        155.0098419189453,
+        85.02820587158203
+      ],
+      "gt_reason": "same page, quad centers within 0.0 pt",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 1.0,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_255d023bf81eff52",
+      "selected_text": "Transformer",
+      "v1_page": 0,
+      "v1_quad": [
+        375.64019775390625,
+        70.6820068359375,
+        453.89874267578125,
+        70.6820068359375,
+        375.64019775390625,
+        85.0281982421875,
+        453.89874267578125,
+        85.0281982421875
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "preserved",
+      "gt_page": 0,
+      "gt_quad": [
+        375.64019775390625,
+        70.6820068359375,
+        453.89874267578125,
+        70.6820068359375,
+        375.64019775390625,
+        85.02820587158203,
+        453.89874267578125,
+        85.02820587158203
+      ],
+      "gt_reason": "same page, quad centers within 0.0 pt",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 1.0,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_26738c398de798aa",
+      "selected_text": "masked",
+      "v1_page": 0,
+      "v1_quad": [
+        445.85406494140625,
+        754.692626953125,
+        479.0613708496094,
+        754.692626953125,
+        445.85406494140625,
+        765.6016845703125,
+        479.0613708496094,
+        765.6016845703125
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 0,
+      "gt_quad": [
+        470.17047119140625,
+        686.9466552734375,
+        503.388671875,
+        686.9466552734375,
+        470.17047119140625,
+        697.855712890625,
+        503.388671875,
+        697.855712890625
+      ],
+      "gt_reason": "same page but shifted 72.0 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.4973,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_43c1e11ac8106d7d",
+      "selected_text": "Pre-training",
+      "v1_page": 0,
+      "v1_quad": [
+        163.37368774414062,
+        70.6820068359375,
+        238.8203887939453,
+        70.6820068359375,
+        163.37368774414062,
+        85.0281982421875,
+        238.8203887939453,
+        85.0281982421875
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "preserved",
+      "gt_page": 0,
+      "gt_quad": [
+        163.37368774414062,
+        70.6820068359375,
+        238.8203887939453,
+        70.6820068359375,
+        163.37368774414062,
+        85.02820587158203,
+        238.8203887939453,
+        85.02820587158203
+      ],
+      "gt_reason": "same page, quad centers within 0.0 pt",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 1.0,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_aceefa106949c6a2",
+      "selected_text": "GLUE",
+      "v1_page": 0,
+      "v1_quad": [
+        214.36727905273438,
+        471.74737548828125,
+        240.92755126953125,
+        471.74737548828125,
+        214.36727905273438,
+        481.7099914550781,
+        240.92755126953125,
+        481.7099914550781
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "preserved",
+      "gt_page": 0,
+      "gt_quad": [
+        209.6848602294922,
+        465.1243896484375,
+        236.24513244628906,
+        465.1243896484375,
+        209.6848602294922,
+        475.0870056152344,
+        236.24513244628906,
+        475.0870056152344
+      ],
+      "gt_reason": "same page, quad centers within 8.1 pt",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.7815,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_74ed3c217314dc62",
+      "selected_text": "SQuAD",
+      "v1_page": 0,
+      "v1_quad": [
+        196.98255920410156,
+        507.6123046875,
+        229.08203125,
+        507.6123046875,
+        196.98255920410156,
+        517.5748901367188,
+        229.08203125,
+        517.5748901367188
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 0,
+      "gt_quad": [
+        150.43734741210938,
+        500.9903564453125,
+        182.5368194580078,
+        500.9903564453125,
+        150.43734741210938,
+        510.9529724121094,
+        182.5368194580078,
+        510.9529724121094
+      ],
+      "gt_reason": "same page but shifted 47.0 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.6391,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_d1b302e0ae37a913",
+      "selected_text": "attention",
+      "v1_page": 0,
+      "v1_quad": [
+        487.3632507324219,
+        578.2036743164062,
+        525.5449829101562,
+        578.2036743164062,
+        487.3632507324219,
+        589.1127319335938,
+        525.5449829101562,
+        589.1127319335938
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 0,
+      "gt_quad": [
+        458.4760437011719,
+        537.3816528320312,
+        496.6469421386719,
+        537.3816528320312,
+        458.4760437011719,
+        548.2907104492188,
+        496.6469421386719,
+        548.2907104492188
+      ],
+      "gt_reason": "same page but shifted 50.0 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.846,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_4a11a8bc2efb4ec2",
+      "selected_text": "Bidirectional",
+      "v1_page": 0,
+      "v1_quad": [
+        292.6043395996094,
+        70.6820068359375,
+        372.05364990234375,
+        70.6820068359375,
+        292.6043395996094,
+        85.0281982421875,
+        372.05364990234375,
+        85.0281982421875
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "preserved",
+      "gt_page": 0,
+      "gt_quad": [
+        292.6043395996094,
+        70.6820068359375,
+        372.05364990234375,
+        70.6820068359375,
+        292.6043395996094,
+        85.02820587158203,
+        372.05364990234375,
+        85.02820587158203
+      ],
+      "gt_reason": "same page, quad centers within 0.0 pt",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 1.0,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_0a3bb1cd861d1bff",
+      "selected_text": "Encoder",
+      "v1_page": 0,
+      "v1_quad": [
+        146.00494384765625,
+        274.59552001953125,
+        179.7581787109375,
+        274.68646240234375,
+        146.00494384765625,
+        284.55810546875,
+        179.7581787109375,
+        284.6490478515625
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "preserved",
+      "gt_page": 0,
+      "gt_quad": [
+        146.00494384765625,
+        269.6395263671875,
+        179.7581787109375,
+        269.73046875,
+        146.00494384765625,
+        279.60211181640625,
+        179.7581787109375,
+        279.6930847167969
+      ],
+      "gt_reason": "same page, quad centers within 5.0 pt",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.952,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_f86ca436ec159261",
+      "selected_text": "Fine-tuning",
+      "v1_page": 1,
+      "v1_quad": [
+        331.82147216796875,
+        426.3902282714844,
+        386.3778381347656,
+        426.3902282714844,
+        331.82147216796875,
+        437.2993469238281,
+        386.3778381347656,
+        437.2993469238281
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "broken",
+      "gt_page": null,
+      "gt_quad": null,
+      "gt_reason": "best v2 ctx_sim 0.073 < 0.15 (token likely removed semantically)",
+      "gt_method": "semantic"
+    },
+    {
+      "annotation_id": "anc_f00a9e18799bed47",
+      "selected_text": "next sentence",
+      "v1_page": 1,
+      "v1_quad": [
+        132.28369140625,
+        200.9857177734375,
+        193.15646362304688,
+        200.9857177734375,
+        132.28369140625,
+        211.89483642578125,
+        193.15646362304688,
+        211.89483642578125
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 1,
+      "gt_quad": [
+        506.9233093261719,
+        133.23989868164062,
+        525.5451049804688,
+        133.23989868164062,
+        506.9233093261719,
+        144.1490020751953,
+        525.5451049804688,
+        144.1490020751953
+      ],
+      "gt_reason": "same page but shifted 359.9 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.4696,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_a9d1ac174e451e17",
+      "selected_text": "embedding",
+      "v1_page": 1,
+      "v1_quad": [
+        366.5341796875,
+        106.1417236328125,
+        415.01422119140625,
+        106.1417236328125,
+        366.5341796875,
+        117.05078125,
+        415.01422119140625,
+        117.05078125
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 1,
+      "gt_quad": [
+        393.6542663574219,
+        106.14187622070312,
+        442.1343078613281,
+        106.14187622070312,
+        393.6542663574219,
+        117.05097961425781,
+        442.1343078613281,
+        117.05097961425781
+      ],
+      "gt_reason": "same page but shifted 27.1 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.6026,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_cb3cc4ce40ceb13f",
+      "selected_text": "WordPiece",
+      "v1_page": 2,
+      "v1_quad": [
+        366.995849609375,
+        629.748779296875,
+        414.5921936035156,
+        629.748779296875,
+        366.995849609375,
+        640.6578369140625,
+        414.5921936035156,
+        640.6578369140625
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 3,
+      "gt_quad": [
+        462.02154541015625,
+        187.43673706054688,
+        509.6178894042969,
+        187.43673706054688,
+        462.02154541015625,
+        198.34584045410156,
+        509.6178894042969,
+        198.34584045410156
+      ],
+      "gt_reason": "page moved from 2 to 3",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.1606,
+      "gt_v2_occurrence_rank": 0
+    },
+    {
+      "annotation_id": "anc_22598efe532006b1",
+      "selected_text": "softmax",
+      "v1_page": 3,
+      "v1_quad": [
+        432.3160400390625,
+        296.120849609375,
+        467.46514892578125,
+        296.120849609375,
+        432.3160400390625,
+        307.0299072265625,
+        467.46514892578125,
+        307.0299072265625
+      ],
+      "v1_occurrence_rank": 0,
+      "gt_status": "relocated",
+      "gt_page": 3,
+      "gt_quad": [
+        467.55242919921875,
+        160.33871459960938,
+        502.7015380859375,
+        160.33871459960938,
+        467.55242919921875,
+        171.24781799316406,
+        502.7015380859375,
+        171.24781799316406
+      ],
+      "gt_reason": "same page but shifted 140.3 pt (> 15.0 pt)",
+      "gt_method": "semantic",
+      "gt_ctx_similarity": 0.7715,
+      "gt_v2_occurrence_rank": 0
+    }
+  ]
+}

@@ -540,7 +540,9 @@ def diff(
         None, "--diff-out", help="Write DiffReport JSON to a file instead of stdout."
     ),
     page_window: int = typer.Option(
-        3, "--page-window", help="Search window in pages around the old page index (>= 0)."
+        3,
+        "--page-window",
+        help=("Page-distance scale for relocation confidence (>= 0); not a hard search filter."),
     ),
     verbose: bool = typer.Option(False, "--verbose"),
     quiet: bool = typer.Option(False, "--quiet"),

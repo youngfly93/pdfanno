@@ -88,6 +88,74 @@ def test_diff_partial_deletion_is_broken(pair_partial) -> None:
     assert relocated[0]["match_reason"]["page_delta"] == 0
 
 
+def test_diff_case_only_edit_is_changed(tmp_path: Path) -> None:
+    """PyMuPDF search_for is ASCII case-insensitive; diff must not call this preserved."""
+
+    import pymupdf
+
+    v1 = tmp_path / "case_v1.pdf"
+    v2 = tmp_path / "case_v2.pdf"
+    old_sentence = "Case Only Biomarker ABC remains in the abstract."
+    new_sentence = "case only biomarker abc remains in the abstract."
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), old_sentence, fontsize=12)
+    annot = page.add_highlight_annot(page.search_for(old_sentence, quads=True))
+    annot.update()
+    doc.save(v1)
+    doc.close()
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), new_sentence, fontsize=12)
+    doc.save(v2)
+    doc.close()
+
+    report = _run_diff(v1, v2)
+    assert report["summary"]["total_annotations"] == 1
+    assert report["summary"]["preserved"] == 0
+    assert report["summary"]["changed"] == 1
+    result = report["results"][0]
+    assert result["status"] == "changed"
+    assert result["new_anchor"]["page_index"] == 0
+    assert result["new_anchor"]["matched_text"] == new_sentence
+
+
+def test_diff_non_text_annotations_are_unsupported(tmp_path: Path) -> None:
+    """Text note / square annotations are real anchors, but not migratable text coverage."""
+
+    import pymupdf
+
+    v1 = tmp_path / "unsupported_v1.pdf"
+    v2 = tmp_path / "unsupported_v2.pdf"
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), "A page with unsupported annotations.", fontsize=12)
+    note = page.add_text_annot((90, 150), "sticky body")
+    note.set_info(content="TEXT_NOTE")
+    note.update()
+    square = page.add_rect_annot(pymupdf.Rect(72, 190, 180, 240))
+    square.set_info(content="SQUARE_NOTE")
+    square.update()
+    doc.save(v1)
+    doc.close()
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 100), "A page with unsupported annotations.", fontsize=12)
+    doc.save(v2)
+    doc.close()
+
+    report = _run_diff(v1, v2)
+    assert report["summary"]["total_annotations"] == 2
+    assert report["summary"]["unsupported"] == 2
+    assert report["summary"]["broken"] == 0
+    assert {r["status"] for r in report["results"]} == {"unsupported"}
+    assert all(r["review_required"] for r in report["results"])
+
+
 def test_diff_schema_version_is_2(pair_identical) -> None:
     v1, v2 = pair_identical
     report = _run_diff(v1, v2)
@@ -348,6 +416,58 @@ def test_changed_status_for_edited_in_place_text(tmp_path: Path) -> None:
     # context_sim 应 >= 0.70 阈值
     cs = r["match_reason"]["context_similarity"]
     assert cs >= 0.70, f"context 应该高，实际 {cs}"
+
+
+def test_fuzzy_changed_does_not_reuse_exact_slot_for_deleted_near_duplicate(
+    tmp_path: Path,
+) -> None:
+    """Deleted near-duplicate text must not steal a surviving exact anchor's slot.
+
+    Old has anchors 00..19. New keeps only 00..13. The deleted 14..19 differ
+    from surviving lines by two digits, so fuzzy text similarity is ~0.99. They
+    should still be broken because every fuzzy target is already owned by a real
+    exact match.
+    """
+
+    import pymupdf
+
+    v1 = tmp_path / "v1.pdf"
+    v2 = tmp_path / "v2.pdf"
+    total = 20
+    kept = 14
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    for i in range(total):
+        text = f"Near duplicate anchor {i:02d} remains individually identifiable."
+        y = 80 + i * 28
+        page.insert_text((72, y), text, fontsize=10)
+        annot = page.add_highlight_annot(page.search_for(text, quads=True))
+        annot.update()
+    doc.save(v1)
+    doc.close()
+
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    for i in range(kept):
+        text = f"Near duplicate anchor {i:02d} remains individually identifiable."
+        y = 80 + i * 28
+        page.insert_text((72, y), text, fontsize=10)
+    doc.save(v2)
+    doc.close()
+
+    report = _run_diff(v1, v2)
+    assert report["summary"]["total_annotations"] == total
+    assert report["summary"]["preserved"] == kept
+    assert report["summary"]["changed"] == 0
+    assert report["summary"]["broken"] == total - kept
+
+    broken_texts = [
+        r["old_anchor"]["selected_text"] for r in report["results"] if r["status"] == "broken"
+    ]
+    assert {f"{i:02d}" for i in range(kept, total)} == {
+        text.split("anchor ", 1)[1][:2] for text in broken_texts
+    }
 
 
 def test_layout_score_picks_kth_occurrence_on_same_page(tmp_path: Path) -> None:

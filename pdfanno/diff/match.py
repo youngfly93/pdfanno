@@ -34,7 +34,7 @@ from difflib import SequenceMatcher
 import pymupdf
 
 from pdfanno.diff import context as ctx
-from pdfanno.diff.anchors import CONTEXT_CHARS
+from pdfanno.diff.anchors import CONTEXT_CHARS, TEXT_COVERAGE_KINDS
 from pdfanno.diff.sections import SectionSpan, build_section_index, section_for
 from pdfanno.diff.types import (
     Anchor,
@@ -171,9 +171,10 @@ class _PageView:
 class _Candidate:
     """anchor → 新 PDF 上的一个候选位置。
 
-    `window_start` 是 fuzzy 候选在 normalized page text 中的起始字符位置，用于
-    dedup —— 否则同页多条 fuzzy 候选会被 ("fuzzy", page) 当成同一个槽位互相挤掉。
-    exact 候选用 quad 中心 dedup，window_start 被忽略（默认 -1）。
+    `window_start` 是候选在 normalized page text 中的起始字符位置，用于跨 exact /
+    fuzzy 共享 text slot —— 否则 fuzzy 候选可以复用已经被 exact anchor 认领的新
+    PDF 文本位置，把删除的近重复句子误判为 changed。
+    exact 候选仍保留 quad 中心作为几何 slot；window_start 缺失时默认 -1。
     """
 
     page_index: int
@@ -240,6 +241,9 @@ def diff_against(
     # Phase 3: 按分配结果分类并构造 DiffResult。
     results: list[DiffResult] = []
     for anchor, _cands in anchor_candidates:
+        if _is_unsupported(anchor):
+            results.append(_unsupported(anchor))
+            continue
         cand = assignments.get(anchor.annotation_id)
         if cand is None:
             results.append(_broken(anchor))
@@ -319,11 +323,20 @@ def _exact_candidates(
         if not quads:
             continue
         text_positions = _all_find(pv.normalized, norm_sel)
+        casefold_positions = _all_find(pv.normalized.casefold(), norm_sel.casefold())
         for q_idx, q in enumerate(quads):
             text_idx = text_positions[q_idx] if q_idx < len(text_positions) else -1
+            if text_idx < 0 and q_idx < len(casefold_positions):
+                text_idx = casefold_positions[q_idx]
+            quad_floats = _quad_to_floats(q)
+            matched_text, text_sim = _exact_candidate_text(pv.page, q, norm_sel)
+            if matched_text is None:
+                # PyMuPDF search_for is ASCII case-insensitive. If the page text
+                # does not contain a case-sensitive occurrence and the quad text
+                # is not a case-only variant, do not treat it as an exact hit.
+                continue
             new_before, new_after = _slice_context(pv.normalized, text_idx, len(norm_sel))
             ctx_sim = _context_similarity(anchor, new_before, new_after)
-            quad_floats = _quad_to_floats(q)
             v2_rank = _match_v2_rank(v2_occs, pv.index, quad_floats)
             # 候选的 section —— 用 quad 中心 y 定位到 v2 的 section。
             cy = (quad_floats[1] + quad_floats[7]) / 2
@@ -339,12 +352,13 @@ def _exact_candidates(
             yield _Candidate(
                 page_index=pv.index,
                 quads=[quad_floats],
-                matched_text=norm_sel,
-                text_similarity=1.0,
+                matched_text=matched_text,
+                text_similarity=text_sim,
                 context_similarity=ctx_sim,
                 layout_score=layout,
                 page_proximity=_proximity(pv.index - anchor.page_index, page_window),
-                length_similarity=1.0,  # exact 命中，长度恒等于 needle
+                length_similarity=_length_similarity(len(norm_sel), len(matched_text)),
+                window_start=text_idx,
             )
 
 
@@ -416,6 +430,29 @@ def _all_find(haystack: str, needle: str) -> list[int]:
             return positions
         positions.append(idx)
         start = idx + 1  # 允许重叠以应对极短 token
+
+
+def _exact_candidate_text(
+    page: pymupdf.Page,
+    quad: pymupdf.Quad,
+    norm_sel: str,
+) -> tuple[str | None, float]:
+    """Return case-sensitive candidate text and similarity for a MuPDF hit.
+
+    PyMuPDF `search_for` is case-insensitive for ASCII. For diff this matters:
+    a case-only edit at the same location should be `changed`, not `preserved`.
+    We therefore inspect the hit rectangle. True same-case hits get text_sim=1;
+    case-only variants keep their quad but receive a SequenceMatcher score.
+    """
+
+    actual = normalize_text(page.get_textbox(quad.rect) or "")
+    if not actual:
+        return norm_sel, 1.0
+    if actual == norm_sel or norm_sel in actual or actual in norm_sel:
+        return norm_sel, 1.0
+    if actual.casefold() == norm_sel.casefold():
+        return actual, SequenceMatcher(None, norm_sel, actual, autojunk=False).ratio()
+    return None, 0.0
 
 
 def _slice_context(text: str, hit_idx: int, hit_len: int) -> tuple[str, str]:
@@ -624,19 +661,31 @@ def _assign_one_to_one(
     for score, _ai, _ci, aid, cand in indexed:
         if aid in assignments:
             continue
-        slot = _candidate_key(cand)
-        holder = used.get(slot)
-        if holder is None:
+        conflict = _first_used_slot(used, cand)
+        if conflict is None:
             assignments[aid] = cand
-            used[slot] = (aid, score, cand)
+            _claim_candidate(used, aid, score, cand)
             continue
 
         # slot 已占。默认 greedy：skip。Week 11：仅在开关打开 + 同 token + score 近
         # + ctx 显著更高时抢占。
+        _slot, holder = conflict
+        holder_aid, holder_score, holder_cand = holder
+
+        # Fuzzy 候选不能复用已被 exact 命中的新文本位置；反过来，如果 exact 候选
+        # 后到，也应该抢回这个 slot。否则 "anchor 44" 这种已删除近重复句会把
+        # "anchor 34" 的真实位置当成高 text_sim 的 changed。
+        if _is_exact_text_candidate(cand) and not _is_exact_text_candidate(holder_cand):
+            assignments.pop(holder_aid, None)
+            _release_candidate(used, holder_aid, holder_cand)
+            displaced.append(holder_aid)
+            assignments[aid] = cand
+            _claim_candidate(used, aid, score, cand)
+            continue
+
         if ctx_params is None:
             continue
         epsilon, min_advantage = ctx_params
-        holder_aid, holder_score, holder_cand = holder
         if holder_aid == aid:
             continue  # 防御性 —— 不应发生
         holder_anchor = aid_to_anchor.get(holder_aid)
@@ -653,9 +702,10 @@ def _assign_one_to_one(
             continue  # contender 的 ctx 优势不够
         # 抢占！
         assignments.pop(holder_aid, None)
+        _release_candidate(used, holder_aid, holder_cand)
         displaced.append(holder_aid)
         assignments[aid] = cand
-        used[slot] = (aid, score, cand)
+        _claim_candidate(used, aid, score, cand)
 
     # 为被抢占的 anchor 找次优未占用候选。按本 anchor 的 score desc 扫一遍。
     for aid in displaced:
@@ -664,26 +714,75 @@ def _assign_one_to_one(
         for c in sorted(aid_to_cands.get(aid, []), key=lambda x: -x.score):
             if c.score < MIN_CANDIDATE_SCORE:
                 break
-            slot = _candidate_key(c)
-            if slot in used:
+            if _first_used_slot(used, c) is not None:
                 continue
             assignments[aid] = c
-            used[slot] = (aid, c.score, c)
+            _claim_candidate(used, aid, c.score, c)
             break
 
     return assignments
 
 
-def _candidate_key(cand: _Candidate) -> tuple:
-    """候选去重 key：exact 按 quad 中心（四舍五入到 0.1）；fuzzy 按 (page, window_start)。
+def _candidate_keys(cand: _Candidate) -> tuple[tuple, ...]:
+    """候选去重 key：
+    - text slot：exact / fuzzy 共享 `(page, window_start)`，禁止重复认领同一文本位置。
+    - geometry slot：exact 额外按 quad 中心去重（四舍五入到 0.1）。
 
-    fuzzy 的 window_start 是对齐后的字符偏移，保证同页多条 fuzzy 候选互不互斥。
+    fuzzy 的 window_start 是对齐后的字符偏移；exact 的 window_start 来自 normalized
+    text 中的命中位置。缺失 window_start 时，fuzzy 回退到 legacy fuzzy key。
     """
 
+    keys: list[tuple] = []
+    if cand.window_start >= 0:
+        keys.append(("text", cand.page_index, cand.window_start))
     if cand.quads:
         cx, cy = _quad_center(cand.quads[0])
-        return ("exact", cand.page_index, round(cx, 1), round(cy, 1))
-    return ("fuzzy", cand.page_index, cand.window_start)
+        keys.append(("exact", cand.page_index, round(cx, 1), round(cy, 1)))
+    if not keys:
+        keys.append(("fuzzy", cand.page_index, cand.window_start))
+    return tuple(keys)
+
+
+def _first_used_slot(
+    used: dict[tuple, tuple[str, float, _Candidate]],
+    cand: _Candidate,
+) -> tuple[tuple, tuple[str, float, _Candidate]] | None:
+    for key in _candidate_keys(cand):
+        holder = used.get(key)
+        if holder is not None:
+            if (
+                key[0] == "text"
+                and _is_exact_text_candidate(cand)
+                and _is_exact_text_candidate(holder[2])
+            ):
+                continue
+            return key, holder
+    return None
+
+
+def _claim_candidate(
+    used: dict[tuple, tuple[str, float, _Candidate]],
+    aid: str,
+    score: float,
+    cand: _Candidate,
+) -> None:
+    for key in _candidate_keys(cand):
+        used[key] = (aid, score, cand)
+
+
+def _release_candidate(
+    used: dict[tuple, tuple[str, float, _Candidate]],
+    aid: str,
+    cand: _Candidate,
+) -> None:
+    for key in _candidate_keys(cand):
+        holder = used.get(key)
+        if holder is not None and holder[0] == aid:
+            used.pop(key, None)
+
+
+def _is_exact_text_candidate(cand: _Candidate) -> bool:
+    return bool(cand.quads) and cand.text_similarity == 1.0
 
 
 # ---------- Phase 3: status classification ----------
@@ -745,7 +844,15 @@ def _classify(anchor: Anchor, cand: _Candidate) -> DiffResult:
             cand.text_similarity >= CHANGED_TEXT_MIN
             and cand.context_similarity >= CHANGED_CONTEXT_THRESHOLD
         )
-        if high_text_edit or mid_text_with_ctx:
+        same_location_edit = (
+            cand.text_similarity >= FUZZY_THRESHOLD
+            and page_delta == 0
+            and _quads_nearby(anchor.quads, cand.quads, threshold=QUAD_PROXIMITY_THRESHOLD)
+        )
+        has_exact_geometry = bool(cand.quads)
+        if same_location_edit or (
+            not has_exact_geometry and (high_text_edit or mid_text_with_ctx)
+        ):
             # `changed` 保留，不受 floor 影响 —— 高 text 或 ctx 本身已不低。
             return DiffResult(
                 annotation_id=anchor.annotation_id,
@@ -835,6 +942,23 @@ def _broken(anchor: Anchor) -> DiffResult:
         review_required=True,
         message="No candidate above threshold.",
     )
+
+
+def _unsupported(anchor: Anchor) -> DiffResult:
+    return DiffResult(
+        annotation_id=anchor.annotation_id,
+        status="unsupported",
+        confidence=0.0,
+        old_anchor=anchor,
+        new_anchor=None,
+        match_reason=None,
+        review_required=True,
+        message=f"Annotation kind {anchor.kind!r} is not text-coverage and cannot be migrated.",
+    )
+
+
+def _is_unsupported(anchor: Anchor) -> bool:
+    return anchor.kind not in TEXT_COVERAGE_KINDS
 
 
 # ---------- quad geometry helpers ----------

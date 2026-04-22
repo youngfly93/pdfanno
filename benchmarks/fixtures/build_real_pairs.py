@@ -72,9 +72,9 @@ SPECS: list[PairSpec] = [
         arxiv_id="1301.3781",
         v1_version="1",
         v2_version="3",
-        # 紧排版论文 —— 注意每条 phrase 都要在正文里能单独作为行内短语出现，
-        # 让 quad 不跨行。_selected_text 的混合策略已经修过跨行 leak，
-        # 但挑 phrase 时尽量避开包围空白太少的 token。
+        # 紧排版论文。Week 6 扩容：前 8 条是 v0.2.1 的稳定项，后面是高频短 token 的
+        # stress test。**同一 phrase 重复出现 = 高亮该 phrase 的前 N 次命中** ——
+        # 类比 arXiv 1706 的 BLEU × 2 / WMT × 4 / Multi-Head × 3 模式。
         phrases=[
             "continuous bag-of-words model",
             "Skip-gram",
@@ -84,6 +84,10 @@ SPECS: list[PairSpec] = [
             "projection layer",
             "hierarchical softmax",
             "large amount of data",
+            # stress：同 token 的前 3/2/2 次命中 —— rank_sim 映射压力
+            "NNLM", "NNLM", "NNLM",
+            "CBOW", "CBOW",
+            "Mikolov", "Mikolov",
         ],
     ),
     PairSpec(
@@ -91,6 +95,8 @@ SPECS: list[PairSpec] = [
         arxiv_id="1409.3215",
         v1_version="1",
         v2_version="3",
+        # Week 6 扩容：前 8 条 v0.2.1 稳定项 + 重复短 token stress（LSTMs × 21、
+        # BLEU × 19、SMT × 13、RNN × 11 次）—— 最贴近 arXiv 1706 失败模式。
         phrases=[
             "Sequence to Sequence",
             "Neural Network",
@@ -100,6 +106,11 @@ SPECS: list[PairSpec] = [
             "beam search",
             "English to French",
             "Deep Learning",
+            # stress：同 token 前 4/3/2/2 次命中
+            "LSTMs", "LSTMs", "LSTMs", "LSTMs",
+            "BLEU", "BLEU", "BLEU",
+            "SMT", "SMT",
+            "RNN", "RNN",
         ],
     ),
 ]

@@ -1,0 +1,70 @@
+{
+  "version": "0.2.1+week6-stress",
+  "captured": "2026-04-22",
+  "note": "Week 6 stressed baseline. Word2Vec + Seq2Seq specs now include repeat-short-token stress (NNLM x3, CBOW x2, Mikolov x2; LSTMs x4, BLEU x3, SMT x2, RNN x2). Compare to v0.2.1.json.",
+  "benchmarks": {
+    "arxiv_1706.03762_v1_v5": {
+      "overall_accuracy": 0.9231,
+      "location_accuracy": 0.5641,
+      "location_hits": 22,
+      "location_attempts": 39,
+      "paired": 39,
+      "failure_count": 11,
+      "per_status_f1": {
+        "preserved": 0.8235,
+        "relocated": 0.9508
+      }
+    },
+    "revised_synthetic": {
+      "overall_accuracy": 0.8846,
+      "location_accuracy": 1.0,
+      "location_hits": 13,
+      "location_attempts": 13,
+      "paired": 26,
+      "failure_count": 3,
+      "per_status_f1": {
+        "preserved": 0.7692,
+        "relocated": 0.7692,
+        "changed": 1.0,
+        "broken": 1.0
+      }
+    },
+    "bert_1810.04805_v1_v2": {
+      "overall_accuracy": 1.0,
+      "location_accuracy": 0.7857,
+      "location_hits": 11,
+      "location_attempts": 14,
+      "paired": 14,
+      "failure_count": 0,
+      "per_status_f1": {
+        "preserved": 1.0,
+        "relocated": 1.0
+      }
+    },
+    "word2vec_1301.3781_v1_v3": {
+      "overall_accuracy": 0.8667,
+      "location_accuracy": 0.5714,
+      "location_hits": 8,
+      "location_attempts": 14,
+      "paired": 15,
+      "failure_count": 4,
+      "per_status_f1": {
+        "preserved": null,
+        "relocated": 0.9231,
+        "broken": 1.0
+      }
+    },
+    "seq2seq_1409.3215_v1_v3": {
+      "overall_accuracy": 1.0,
+      "location_accuracy": 0.9474,
+      "location_hits": 18,
+      "location_attempts": 19,
+      "paired": 19,
+      "failure_count": 0,
+      "per_status_f1": {
+        "preserved": 1.0,
+        "relocated": 1.0
+      }
+    }
+  }
+}

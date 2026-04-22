@@ -3,6 +3,50 @@
 All notable changes to `pdfanno` are documented here. Versioning follows
 [Semantic Versioning](https://semver.org/) and dates are ISO-8601.
 
+## [0.2.1] — 2026-04-22
+
+Patch release: fixes selected-text extraction on tight-layout PDFs and
+adds Word2Vec / Seq2Seq as regression cases. No change to existing
+baselines.
+
+### Fixed
+
+- `_selected_text` extraction on tight-layout PDFs. The old
+  `page.get_textbox(rect)` call leaked glyph fragments from adjacent
+  lines (e.g. `'pared to the pre\\nneural network\\nmputational cos'`),
+  breaking `ground_truth` re-location and `context_similarity` scoring
+  for most conference-format papers. Fixed by `_clip_text_to_rect`
+  using a hybrid strategy: char-level `get_textbox` first; if the
+  result contains `\\n`, fall back to a word-level filter that keeps
+  only words whose y-center falls inside the quad's y-range ±1pt.
+  Loose-layout papers (arXiv preprints, BERT) keep the old precise
+  x-clip behavior; tight-layout papers stop leaking.
+
+### Added
+
+- Word2Vec (arXiv 1301.3781 v1↔v3) and Seq2Seq (arXiv 1409.3215 v1↔v3)
+  as benchmark papers specifically for tight-layout regression cases.
+- `benchmarks/baselines/v0.2.1.json` — 5-benchmark baseline snapshot.
+
+### Benchmarks
+
+Existing 3 baselines unchanged:
+- arXiv 1706.03762 v1↔v5: 92.3% status / 56.4% location.
+- Revised synthetic: 88.5% status / 100% location.
+- BERT 1810.04805 v1↔v2: 100% status / 78.6% location.
+
+Newly passing (were blocked at anchor-extraction before this fix):
+- Word2Vec 1301.3781 v1↔v3: 100% / 100%.
+- Seq2Seq 1409.3215 v1↔v3: 100% / 100%.
+
+### Deferred
+
+- `section_sim` stays experimental. No change in this release.
+- arXiv 1706's 11 short-token large-shift failures
+  (BLEU / WMT 2014 / Multi-Head Attention in the Results section)
+  remain unresolved — that is a separate "repeated short-token
+  relocation" problem, not a tight-layout problem.
+
 ## [0.2.0] — 2026-04-21
 
 `pdfanno diff` shipped — Week 1 PoC through Week 3 section-aware scoring.
